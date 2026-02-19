@@ -1092,7 +1092,7 @@ function spawnDrop(x, y, guaranteed) {
   const el = document.createElement('div');
   el.className = 'drop ' + rarity;
   const typeTag = item.type === 'core' ? 'C' : item.type === 'sub' ? 'S' : 'M';
-  el.textContent = `[${typeTag}:${item.name}]`;
+  el.textContent = `[${typeTag}:iL${item.ilv} ${item.name}]`;
   el.style.left = drop.x + 'px';
   el.style.top = drop.y + 'px';
   el.addEventListener('click', (ev) => {
@@ -1227,7 +1227,7 @@ function renderInventory() {
       let extra = '';
       if (item && item.type === 'core' && item.attackShape) extra = ` [${item.attackShape[0].toUpperCase()}]`;
       if (item && item.type === 'sub' && item.autoMode) extra = ` [${item.autoMode[0].toUpperCase()}]`;
-      slot.innerHTML = `<span class="slot-label">${prefix}${i+1}</span><span class="slot-item">${item ? item.name + extra : '— empty —'}</span>`;
+      slot.innerHTML = `<span class="slot-label">${prefix}${i+1}</span><span class="slot-item">${item ? '[iL' + item.ilv + '] ' + item.name + extra : '— empty —'}</span>`;
       if (item) {
         slot.addEventListener('click', () => unequipSlot(type, i));
         slot.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
@@ -1264,7 +1264,7 @@ function renderInvSection(type, items, listId, pageId, countId, pageKey) {
     const item = items[i];
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
-    row.innerHTML = `<span class="inv-name">${item.name}</span><span class="inv-trash">✕</span>`;
+    row.innerHTML = `<span class="inv-name">[iL${item.ilv}] ${item.name}</span><span class="inv-trash">✕</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
     row.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
