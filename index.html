@@ -1381,8 +1381,7 @@ function spawnDrop(x, y, guaranteed) {
   el.textContent = `[${typeTag}:iL${item.ilv} ${item.name}]`;
   el.style.left = drop.x + 'px';
   el.style.top = drop.y + 'px';
-  el.addEventListener('click', (ev) => {
-    ev.stopPropagation();
+  el.addEventListener('mouseenter', () => {
     pickupDrop(drop);
   });
   canvas.appendChild(el);
