@@ -374,11 +374,11 @@ body {
 /* Crosshair + splash range indicator */
 #crosshair {
   position: fixed;
-  border: 1px solid rgba(0,255,65,0.4);
-  border-radius: 50%;
   pointer-events: none;
   z-index: 90;
   transform: translate(-50%, -50%);
+  border: 1px solid rgba(0,255,65,0.4);
+  border-radius: 50%;
 }
 #crosshair::after {
   content: '+';
@@ -389,6 +389,33 @@ body {
   color: #00ff41;
   font-size: 16px;
   font-weight: bold;
+}
+/* Shape variants */
+#crosshair.shape-line {
+  border-radius: 2px;
+}
+#crosshair.shape-cone {
+  border-radius: 0;
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+  border: none;
+  background: rgba(0,255,65,0.1);
+  border: 1px solid rgba(0,255,65,0.4);
+}
+#crosshair.shape-nova {
+  border-radius: 50%;
+  border-style: dashed;
+}
+#crosshair.shape-pierce-burst {
+  border-radius: 2px;
+  border-style: double;
+}
+#crosshair.shape-lock-on {
+  border-radius: 50%;
+  border-color: rgba(255,68,68,0.5);
+}
+#crosshair.shape-lock-on::after {
+  content: '+3';
+  color: #ff4444;
 }
 
 /* Status banner */
@@ -1859,17 +1886,47 @@ document.addEventListener('mousemove', (e) => {
 });
 function updateCrosshair() {
   const stats = getComputedStats();
-  // Show the circle attack range (largest equipped core splash for circle shape)
+  // Find primary core shape and max splash
+  let primaryShape = 'circle';
   let maxSplash = 0;
   for (const c of state.equipped.cores) {
     if (c) {
       const s = Math.floor(c.splash * state.upgrades.splashMult);
       if (s > maxSplash) maxSplash = s;
+      if (primaryShape === 'circle') primaryShape = c.attackShape || 'circle';
     }
   }
-  const size = (maxSplash || stats.splash) * 2;
-  crosshairEl.style.width = size + 'px';
-  crosshairEl.style.height = size + 'px';
+  const splash = maxSplash || stats.splash;
+  // Remove old shape classes
+  crosshairEl.className = '';
+  let w, h;
+  switch (primaryShape) {
+    case 'line':
+      crosshairEl.classList.add('shape-line');
+      w = 30; h = splash * 3;
+      break;
+    case 'cone':
+      crosshairEl.classList.add('shape-cone');
+      w = splash * 1.5; h = splash * 1.5;
+      break;
+    case 'nova':
+      crosshairEl.classList.add('shape-nova');
+      w = splash * 4; h = splash * 4;
+      break;
+    case 'pierce-burst':
+      crosshairEl.classList.add('shape-pierce-burst');
+      w = 40; h = splash * 2.5;
+      break;
+    case 'lock-on':
+      crosshairEl.classList.add('shape-lock-on');
+      w = splash * 2; h = splash * 2;
+      break;
+    default: // circle
+      w = splash * 2; h = splash * 2;
+      break;
+  }
+  crosshairEl.style.width = w + 'px';
+  crosshairEl.style.height = h + 'px';
 }
 document.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
