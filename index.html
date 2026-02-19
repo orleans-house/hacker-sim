@@ -363,11 +363,15 @@ body {
 <div id="inventory-panel">
   <h3>EQUIPMENT</h3>
   <div class="equip-section">
-    <div class="section-title">── CORE SLOTS ──</div>
+    <div class="section-title">── CORE ──</div>
     <div id="core-slots"></div>
   </div>
   <div class="equip-section">
-    <div class="section-title">── MODULE SLOTS ──</div>
+    <div class="section-title">── SUB ──</div>
+    <div id="sub-slots"></div>
+  </div>
+  <div class="equip-section">
+    <div class="section-title">── MODULE ──</div>
     <div id="module-slots"></div>
   </div>
   <hr class="inv-separator">
@@ -408,6 +412,11 @@ const CORE_NAMES = [
   'Zero-Day Exploit','Rootkit Launcher','Worm Deployer','Trojan Horse',
   'DDoS Cannon','Crypto Breaker','Firewall Piercer','Kernel Panic'
 ];
+const SUB_NAMES = [
+  'Packet Sniffer','Backdoor Agent','Keylogger Mk2','Spyware Beacon',
+  'Brute Forcer','Phishing Relay','Adware Spreader','Botnet Node',
+  'Proxy Chain','DNS Poisoner','Session Hijacker','Payload Dropper'
+];
 const MODULE_NAMES = [
   'Logic Amplifier','Cache Optimizer','Thread Scheduler','Memory Allocator',
   'Pipeline Booster','Signal Enhancer','Packet Compressor','Clock Multiplier',
@@ -441,6 +450,7 @@ let state = {
   drops: [],
   equipped: {
     cores: [null, null, null, null],
+    subs: [null, null, null, null],
     modules: [null, null, null, null],
   },
   cooldown: 0,
@@ -484,10 +494,17 @@ function getComputedStats() {
       coreCount++;
     }
   }
+  // SUBs add supplementary ATK
+  for (const s of state.equipped.subs) {
+    if (s) {
+      baseAtk += s.atk;
+    }
+  }
+
   if (coreCount === 0) return { atk: 0, splash: 30, cd: 1, critChance: 0, critDmg: 0, xpBonus: 0, dropBonus: 0, coreCount: 0 };
 
   let affixTotals = { flatAtk: 0, pctAtk: 0, flatSplash: 0, pctCd: 0, critChance: 0, critDmg: 0, xpBonus: 0, dropRate: 0 };
-  const allEquipped = [...state.equipped.cores, ...state.equipped.modules];
+  const allEquipped = [...state.equipped.cores, ...state.equipped.subs, ...state.equipped.modules];
   for (const item of allEquipped) {
     if (!item || !item.affixes) continue;
     for (const af of item.affixes) {
@@ -528,24 +545,34 @@ function generateAffixes(ilv, count) {
 }
 
 function makeItem(rarity, mapLv) {
-  const isCore = Math.random() < 0.6;
+  const roll = Math.random();
+  const itemType = roll < 0.4 ? 'core' : roll < 0.7 ? 'sub' : 'module'; // 40% core, 30% sub, 30% module
   const ilv = mapLv;
   const rarityIdx = RARITIES.indexOf(rarity);
   const affixCount = RARITY_AFFIX_COUNT[rarity];
   const affixes = generateAffixes(ilv, affixCount);
+  const ilvScale = 1 + (ilv - 1) * 0.15;
 
-  if (isCore) {
+  if (itemType === 'core') {
     const baseName = CORE_NAMES[randInt(0, CORE_NAMES.length - 1)];
-    const ilvScale = 1 + (ilv - 1) * 0.15;
     return {
       id: Date.now() + Math.random(),
       type: 'core',
       name: baseName,
-      rarity,
-      ilv,
+      rarity, ilv,
       atk: Math.floor((8 + rarityIdx * 6 + randInt(0, 4)) * ilvScale),
       splash: Math.floor((45 + rarityIdx * 15 + randInt(0, 10)) * (1 + (ilv - 1) * 0.05)),
       cd: Math.round(Math.max(0.1, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) * 100) / 100,
+      affixes,
+    };
+  } else if (itemType === 'sub') {
+    const baseName = SUB_NAMES[randInt(0, SUB_NAMES.length - 1)];
+    return {
+      id: Date.now() + Math.random(),
+      type: 'sub',
+      name: baseName,
+      rarity, ilv,
+      atk: Math.floor((4 + rarityIdx * 4 + randInt(0, 3)) * ilvScale),
       affixes,
     };
   } else {
@@ -554,8 +581,7 @@ function makeItem(rarity, mapLv) {
       id: Date.now() + Math.random(),
       type: 'module',
       name: baseName,
-      rarity,
-      ilv,
+      rarity, ilv,
       affixes,
     };
   }
@@ -791,8 +817,14 @@ function showBanner(text) {
   setTimeout(() => { banner.style.display = 'none'; }, 1500);
 }
 
+function getSlotsForType(type) {
+  if (type === 'core') return state.equipped.cores;
+  if (type === 'sub') return state.equipped.subs;
+  return state.equipped.modules;
+}
+
 function equipItem(item) {
-  const slots = item.type === 'core' ? state.equipped.cores : state.equipped.modules;
+  const slots = getSlotsForType(item.type);
   const emptyIdx = slots.indexOf(null);
   if (emptyIdx === -1) {
     showBanner('NO EMPTY ' + item.type.toUpperCase() + ' SLOT');
@@ -805,7 +837,7 @@ function equipItem(item) {
 }
 
 function unequipSlot(type, idx) {
-  const slots = type === 'core' ? state.equipped.cores : state.equipped.modules;
+  const slots = getSlotsForType(type);
   const item = slots[idx];
   if (!item) return;
   if (state.inventory.length >= state.maxInventory) {
@@ -830,6 +862,8 @@ function showTooltip(item, ev) {
   html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}</div>`;
   if (item.type === 'core') {
     html += `<div class="tt-stats">ATK: ${item.atk} | Splash: ${item.splash} | CD: ${item.cd}s</div>`;
+  } else if (item.type === 'sub') {
+    html += `<div class="tt-stats">ATK: ${item.atk}</div>`;
   }
   if (item.affixes && item.affixes.length > 0) {
     html += '<div class="tt-affix">';
@@ -858,37 +892,30 @@ function hideTooltip() {
 // ---- RENDER INVENTORY ----
 function renderInventory() {
   const coreContainer = document.getElementById('core-slots');
+  const subContainer = document.getElementById('sub-slots');
   const modContainer = document.getElementById('module-slots');
   coreContainer.innerHTML = '';
+  subContainer.innerHTML = '';
   modContainer.innerHTML = '';
 
-  for (let i = 0; i < 4; i++) {
-    const item = state.equipped.cores[i];
-    const slot = document.createElement('div');
-    slot.className = 'equip-slot ' + (item ? 'filled ' + item.rarity : 'empty');
-    slot.innerHTML = `<span class="slot-label">C${i+1}</span><span class="slot-item">${item ? item.name : '— empty —'}</span>`;
-    if (item) {
-      slot.addEventListener('click', () => unequipSlot('core', i));
-      slot.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
-      slot.addEventListener('mousemove', positionTooltip);
-      slot.addEventListener('mouseleave', hideTooltip);
+  function renderSlots(container, slots, type, prefix) {
+    for (let i = 0; i < 4; i++) {
+      const item = slots[i];
+      const slot = document.createElement('div');
+      slot.className = 'equip-slot ' + (item ? item.rarity : 'empty');
+      slot.innerHTML = `<span class="slot-label">${prefix}${i+1}</span><span class="slot-item">${item ? item.name : '— empty —'}</span>`;
+      if (item) {
+        slot.addEventListener('click', () => unequipSlot(type, i));
+        slot.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
+        slot.addEventListener('mousemove', positionTooltip);
+        slot.addEventListener('mouseleave', hideTooltip);
+      }
+      container.appendChild(slot);
     }
-    coreContainer.appendChild(slot);
   }
-
-  for (let i = 0; i < 4; i++) {
-    const item = state.equipped.modules[i];
-    const slot = document.createElement('div');
-    slot.className = 'equip-slot ' + (item ? 'filled ' + item.rarity : 'empty');
-    slot.innerHTML = `<span class="slot-label">M${i+1}</span><span class="slot-item">${item ? item.name : '— empty —'}</span>`;
-    if (item) {
-      slot.addEventListener('click', () => unequipSlot('module', i));
-      slot.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
-      slot.addEventListener('mousemove', positionTooltip);
-      slot.addEventListener('mouseleave', hideTooltip);
-    }
-    modContainer.appendChild(slot);
-  }
+  renderSlots(coreContainer, state.equipped.cores, 'core', 'C');
+  renderSlots(subContainer, state.equipped.subs, 'sub', 'S');
+  renderSlots(modContainer, state.equipped.modules, 'module', 'M');
 
   const container = document.getElementById('inv-list');
   document.getElementById('inv-count').textContent = state.inventory.length;
@@ -896,7 +923,7 @@ function renderInventory() {
   for (const item of state.inventory) {
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
-    const typeTag = item.type === 'core' ? 'CORE' : 'MOD';
+    const typeTag = item.type === 'core' ? 'CORE' : item.type === 'sub' ? 'SUB' : 'MOD';
     row.innerHTML = `<span class="inv-name">${item.name}</span><span class="inv-type">${typeTag}</span><span class="inv-trash">✕</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
