@@ -667,10 +667,19 @@ function updateEnemies(dt) {
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    if (e.x < 10) { e.x = 10; e.vx = Math.abs(e.vx); }
-    if (e.x > w - 10) { e.x = w - 10; e.vx = -Math.abs(e.vx); }
-    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; e.vy = Math.abs(e.vy); }
-    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; e.vy = -Math.abs(e.vy); }
+    // Bounce off edges — redirect toward center on bounce
+    const cx = w / 2, cy = h / 2;
+    let bounced = false;
+    if (e.x < 10) { e.x = 10; bounced = true; }
+    if (e.x > w - 10) { e.x = w - 10; bounced = true; }
+    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; bounced = true; }
+    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; bounced = true; }
+    if (bounced) {
+      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
+      const scatter = (Math.random() - 0.5) * Math.PI * 0.6;
+      e.vx = Math.cos(toCenterAngle + scatter) * e.speed;
+      e.vy = Math.sin(toCenterAngle + scatter) * e.speed;
+    }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
     e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
