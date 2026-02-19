@@ -609,6 +609,11 @@ function gameLoop(timestamp) {
     // Cooldown
     if (state.cooldown > 0) state.cooldown = Math.max(0, state.cooldown - dt);
 
+    // Auto-attack while holding mouse
+    if (mouseDown && state.cooldown <= 0 && state.mouseY >= CANVAS_PAD_TOP && state.mouseY <= window.innerHeight - CANVAS_PAD_BOT) {
+      attack(state.mouseX, state.mouseY);
+    }
+
     // Spawn remaining enemies in wave
     state.waveTimer += dt;
     if (state.waveSpawnLeft > 0 && state.waveTimer > 1.5) {
@@ -636,14 +641,20 @@ function gameLoop(timestamp) {
 }
 
 // ---- INPUT ----
+let mouseDown = false;
 document.addEventListener('mousemove', (e) => {
   state.mouseX = e.clientX;
   state.mouseY = e.clientY;
 });
-document.addEventListener('click', (e) => {
+document.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  mouseDown = true;
   if (!state.running || state.paused) return;
   if (e.clientY < CANVAS_PAD_TOP || e.clientY > window.innerHeight - CANVAS_PAD_BOT) return;
   attack(e.clientX, e.clientY);
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) mouseDown = false;
 });
 
 // ---- START ----
