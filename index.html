@@ -81,6 +81,9 @@ body {
   z-index: 100;
   font-size: 12px;
 }
+#inventory-panel::-webkit-scrollbar { width: 6px; }
+#inventory-panel::-webkit-scrollbar-track { background: #111; }
+#inventory-panel::-webkit-scrollbar-thumb { background: #00ff41; }
 #inventory-panel h3 {
   color: #ffaa00;
   font-size: 13px;
@@ -119,6 +122,8 @@ body {
 .equip-slot.epic .slot-item { color: #aa44ff; }
 .equip-slot.legendary { border-color: #ffaa00; background: rgba(255,170,0,0.08); }
 .equip-slot.legendary .slot-item { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
+.equip-slot.unique { border-color: #ff2222; background: rgba(255,34,34,0.08); }
+.equip-slot.unique .slot-item { color: #ff2222; text-shadow: 0 0 8px #ff2222; }
 
 .inv-separator {
   border: none;
@@ -151,6 +156,29 @@ body {
 .inv-item.rare .inv-name { color: #4488ff; }
 .inv-item.epic .inv-name { color: #aa44ff; }
 .inv-item.legendary .inv-name { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
+.inv-item.unique .inv-name { color: #ff2222; text-shadow: 0 0 8px #ff2222; }
+
+.inv-page-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #888;
+}
+.inv-page-btn {
+  background: none;
+  border: 1px solid #00ff41;
+  color: #00ff41;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.inv-page-btn:hover { background: rgba(0,255,65,0.2); }
+.inv-page-btn:disabled { color: #555; border-color: #555; cursor: default; }
+.inv-page-btn:disabled:hover { background: none; }
 
 /* Tooltip */
 .item-tooltip {
@@ -170,11 +198,14 @@ body {
 .item-tooltip .tt-ilv { color: #888; font-size: 10px; }
 .item-tooltip .tt-stats { margin: 4px 0; }
 .item-tooltip .tt-affix { color: #00ccff; }
+.item-tooltip .tt-shape { color: #ffcc00; font-size: 10px; }
+.item-tooltip .tt-auto { color: #ff66aa; font-size: 10px; }
 .item-tooltip.common .tt-name { color: #aaa; }
 .item-tooltip.uncommon .tt-name { color: #00ff41; }
 .item-tooltip.rare .tt-name { color: #4488ff; }
 .item-tooltip.epic .tt-name { color: #aa44ff; }
 .item-tooltip.legendary .tt-name { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
+.item-tooltip.unique .tt-name { color: #ff2222; text-shadow: 0 0 8px #ff2222; }
 
 /* Enemies */
 .enemy {
@@ -231,6 +262,44 @@ body {
   100% { opacity: 0; transform: scale(2); }
 }
 
+/* Sub attack effect */
+.sub-attack-effect {
+  position: absolute;
+  color: #ff66aa;
+  font-size: 14px;
+  font-weight: bold;
+  pointer-events: none;
+  animation: attackPop 0.4s ease-out forwards;
+  z-index: 50;
+}
+
+/* Chain line effect */
+.chain-effect {
+  position: absolute;
+  height: 2px;
+  background: #ff66aa;
+  pointer-events: none;
+  transform-origin: left center;
+  animation: chainFade 0.3s ease-out forwards;
+  z-index: 49;
+}
+@keyframes chainFade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Orbit effect */
+.orbit-marker {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ff66aa;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 49;
+  box-shadow: 0 0 6px #ff66aa;
+}
+
 /* Damage numbers */
 .damage-number {
   position: absolute;
@@ -242,6 +311,7 @@ body {
   z-index: 50;
 }
 .damage-number.crit { font-size: 22px; color: #ffaa00; }
+.damage-number.sub-dmg { color: #ff66aa; font-size: 14px; }
 @keyframes floatUp {
   0% { opacity: 1; transform: translateY(0); }
   100% { opacity: 0; transform: translateY(-40px); }
@@ -262,6 +332,7 @@ body {
 .drop.rare { color: #4488ff; border-color: #4488ff; }
 .drop.epic { color: #aa44ff; border-color: #aa44ff; }
 .drop.legendary { color: #ffaa00; border-color: #ffaa00; text-shadow: 0 0 8px #ffaa00; }
+.drop.unique { color: #ff2222; border-color: #ff2222; text-shadow: 0 0 8px #ff2222; }
 @keyframes dropBounce {
   0% { transform: translateY(-20px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
@@ -375,8 +446,21 @@ body {
     <div id="module-slots"></div>
   </div>
   <hr class="inv-separator">
-  <h3>INVENTORY [<span id="inv-count">0</span>/20]</h3>
-  <div id="inv-list"></div>
+  <div class="equip-section">
+    <div class="section-title">── CORE [<span id="inv-count-core">0</span>/50] ──</div>
+    <div id="inv-list-core"></div>
+    <div class="inv-page-controls" id="inv-page-core"></div>
+  </div>
+  <div class="equip-section">
+    <div class="section-title">── SUB [<span id="inv-count-sub">0</span>/50] ──</div>
+    <div id="inv-list-sub"></div>
+    <div class="inv-page-controls" id="inv-page-sub"></div>
+  </div>
+  <div class="equip-section">
+    <div class="section-title">── MODULE [<span id="inv-count-mod">0</span>/50] ──</div>
+    <div id="inv-list-mod"></div>
+    <div class="inv-page-controls" id="inv-page-mod"></div>
+  </div>
 </div>
 
 <div id="game-canvas"></div>
@@ -395,7 +479,7 @@ body {
 // ---- CONFIG ----
 const CANVAS_PAD_TOP = 40;
 const CANVAS_PAD_BOT = 40;
-const SPAWN_INTERVAL = 0.8;
+const SPAWN_INTERVAL = 0.3;
 const ENEMY_TYPES = [
   { tag: 'SRV', baseHp: 20, speed: 30, xp: 2, score: 10 },
   { tag: 'NODE', baseHp: 15, speed: 45, xp: 2, score: 10 },
@@ -404,9 +488,11 @@ const ENEMY_TYPES = [
   { tag: 'PROXY', baseHp: 30, speed: 55, xp: 3, score: 20 },
 ];
 const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, xp: 30, score: 200, elite: true };
-const RARITIES = ['common','uncommon','rare','epic','legendary'];
-const RARITY_WEIGHTS = [50, 30, 14, 5, 1];
-const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+const RARITIES = ['common','uncommon','rare','epic','legendary','unique'];
+const RARITY_WEIGHTS = [50, 30, 14, 5, 1, 0.1];
+const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, unique: 5 };
+const ATTACK_SHAPES = ['circle', 'line', 'cone', 'nova'];
+const AUTO_MODES = ['nearest', 'chain', 'explode', 'orbit'];
 const CORE_NAMES = [
   'Ping Flood','Port Scanner','SQL Injector','Buffer Overflow',
   'Zero-Day Exploit','Rootkit Launcher','Worm Deployer','Trojan Horse',
@@ -423,7 +509,6 @@ const MODULE_NAMES = [
   'Branch Predictor','Entropy Filter','Hash Accelerator','Codec Overdriver'
 ];
 
-// Affix definitions (traceRate removed)
 const AFFIX_POOL = [
   { id: 'flatAtk',    label: (v) => `ATK +${v}`,           gen: (ilv) => randInt(2 + ilv, 5 + ilv * 2) },
   { id: 'pctAtk',     label: (v) => `ATK +${v}%`,          gen: (ilv) => randInt(3, 8 + ilv) },
@@ -434,6 +519,9 @@ const AFFIX_POOL = [
   { id: 'xpBonus',    label: (v) => `XP +${v}%`,           gen: (ilv) => randInt(3, 8 + ilv) },
   { id: 'dropRate',   label: (v) => `DropRate +${v}%`,     gen: (ilv) => randInt(2, 5 + Math.floor(ilv / 2)) },
 ];
+
+const INV_PAGE_SIZE = 5;
+const MAX_INVENTORY = 50;
 
 // ---- STATE ----
 let state = {
@@ -459,15 +547,19 @@ let state = {
   upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, splashMult: 1, critChance: 0.05, critMult: 2, xpMult: 1, dropMult: 1 },
   sp: 0,
   skillLevels: {},
-  inventory: [],
-  maxInventory: 20,
+  inventories: { cores: [], subs: [], modules: [] },
+  invPages: { cores: 0, subs: 0, modules: 0 },
+  subCooldowns: [0, 0, 0, 0],
+  orbitAngles: [0, 0, 0, 0],
+  // Track explode kills per sub
+  pendingExplosions: [],
 };
 
 const canvas = document.getElementById('game-canvas');
 
 // ---- MAP LEVEL HELPERS ----
 function getEnemyHpMult() { return 1 + (state.mapLv - 1) * 0.5; }
-function getMaxEnemies() { return Math.min(40, 8 + state.mapLv * 2); }
+function getMaxEnemies() { return Math.min(80, 12 + state.mapLv * 4); }
 function getEliteRate() { return Math.min(0.3, 0.03 + state.mapLv * 0.02); }
 function getScoreXpMult() { return 1 + (state.mapLv - 1) * 0.3; }
 
@@ -494,7 +586,6 @@ function getComputedStats() {
       coreCount++;
     }
   }
-  // SUBs add supplementary ATK
   for (const s of state.equipped.subs) {
     if (s) {
       baseAtk += s.atk;
@@ -546,34 +637,40 @@ function generateAffixes(ilv, count) {
 
 function makeItem(rarity, mapLv) {
   const roll = Math.random();
-  const itemType = roll < 0.4 ? 'core' : roll < 0.7 ? 'sub' : 'module'; // 40% core, 30% sub, 30% module
+  const itemType = roll < 0.4 ? 'core' : roll < 0.7 ? 'sub' : 'module';
   const ilv = mapLv;
   const rarityIdx = RARITIES.indexOf(rarity);
   const affixCount = RARITY_AFFIX_COUNT[rarity];
   const affixes = generateAffixes(ilv, affixCount);
   const ilvScale = 1 + (ilv - 1) * 0.15;
+  const isUnique = rarity === 'unique';
+  const uniqueMult = isUnique ? 1.5 : 1;
 
   if (itemType === 'core') {
     const baseName = CORE_NAMES[randInt(0, CORE_NAMES.length - 1)];
+    const attackShape = ATTACK_SHAPES[randInt(0, ATTACK_SHAPES.length - 1)];
     return {
       id: Date.now() + Math.random(),
       type: 'core',
       name: baseName,
       rarity, ilv,
-      atk: Math.floor((8 + rarityIdx * 6 + randInt(0, 4)) * ilvScale),
-      splash: Math.floor((45 + rarityIdx * 15 + randInt(0, 10)) * (1 + (ilv - 1) * 0.05)),
-      cd: Math.round(Math.max(0.1, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) * 100) / 100,
+      atk: Math.floor((8 + rarityIdx * 6 + randInt(0, 4)) * ilvScale * uniqueMult),
+      splash: Math.floor((45 + rarityIdx * 15 + randInt(0, 10)) * (1 + (ilv - 1) * 0.05) * uniqueMult),
+      cd: Math.round(Math.max(0.1, (0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) / uniqueMult) * 100) / 100,
       affixes,
+      attackShape,
     };
   } else if (itemType === 'sub') {
     const baseName = SUB_NAMES[randInt(0, SUB_NAMES.length - 1)];
+    const autoMode = AUTO_MODES[randInt(0, AUTO_MODES.length - 1)];
     return {
       id: Date.now() + Math.random(),
       type: 'sub',
       name: baseName,
       rarity, ilv,
-      atk: Math.floor((4 + rarityIdx * 4 + randInt(0, 3)) * ilvScale),
+      atk: Math.floor((4 + rarityIdx * 4 + randInt(0, 3)) * ilvScale * uniqueMult),
       affixes,
+      autoMode,
     };
   } else {
     const baseName = MODULE_NAMES[randInt(0, MODULE_NAMES.length - 1)];
@@ -641,22 +738,18 @@ function updateEnemies(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   for (const e of state.enemies) {
-    // Constant center pull (strong enough to overcome edge drift)
     const cx = w / 2, cy = h / 2;
     const pullDx = cx - e.x, pullDy = cy - e.y;
     const pullDist = Math.hypot(pullDx, pullDy) || 1;
     e.vx += (pullDx / pullDist) * 40 * dt;
     e.vy += (pullDy / pullDist) * 40 * dt;
-    // Velocity damping
     e.vx *= 0.97;
     e.vy *= 0.97;
-    // Random nudge for organic movement
     if (Math.random() < 0.02) {
       const angle = Math.random() * Math.PI * 2;
       e.vx += Math.cos(angle) * e.speed * 0.4;
       e.vy += Math.sin(angle) * e.speed * 0.4;
     }
-    // Gentle repulsion from nearby enemies
     for (const other of state.enemies) {
       if (other.id === e.id) continue;
       const dx = e.x - other.x;
@@ -667,7 +760,6 @@ function updateEnemies(dt) {
         e.vy += (dy / d) * (50 - d) * 0.2 * dt;
       }
     }
-    // Clamp speed
     const spd = Math.hypot(e.vx, e.vy);
     if (spd > e.speed * 1.5) {
       e.vx = (e.vx / spd) * e.speed * 1.5;
@@ -675,7 +767,6 @@ function updateEnemies(dt) {
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    // Bounce off edges — redirect toward center
     let bounced = false;
     if (e.x < 10) { e.x = 10; bounced = true; }
     if (e.x > w - 10) { e.x = w - 10; bounced = true; }
@@ -695,33 +786,94 @@ function updateEnemies(dt) {
   }
 }
 
-// ---- ATTACK ----
+// ---- ATTACK (with CORE shapes) ----
+function getEnemyCenter(e) {
+  return { x: e.x + 35, y: e.y + 10 };
+}
+
+function isInCircle(ex, ey, cx, cy, radius) {
+  return dist(ex, ey, cx, cy) <= radius;
+}
+
+function isInLine(ex, ey, ox, oy, angle, width, length) {
+  const dx = ex - ox, dy = ey - oy;
+  const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+  const perp = Math.abs(-dx * Math.sin(angle) + dy * Math.cos(angle));
+  return along >= 0 && along <= length && perp <= width / 2;
+}
+
+function isInCone(ex, ey, ox, oy, angle, halfAngle, radius) {
+  const d = dist(ex, ey, ox, oy);
+  if (d > radius) return false;
+  const a = Math.atan2(ey - oy, ex - ox);
+  let diff = a - angle;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return Math.abs(diff) <= halfAngle;
+}
+
+function isInNova(ex, ey, cx, cy, innerR, outerR) {
+  const d = dist(ex, ey, cx, cy);
+  return d >= innerR && d <= outerR;
+}
+
 function attack(mx, my) {
   if (state.cooldown > 0 || state.paused) return;
   const stats = getComputedStats();
   if (stats.coreCount === 0) return;
 
-  showAttackEffect(mx, my);
+  const playerX = window.innerWidth / 2;
+  const playerY = window.innerHeight / 2;
+  const clickAngle = Math.atan2(my - playerY, mx - playerX);
 
-  const toKill = [];
-  for (const e of state.enemies) {
-    const ex = e.x + 35;
-    const ey = e.y + 10;
-    const d = dist(mx, my, ex, ey);
-    if (d <= stats.splash) {
-      const isCrit = Math.random() < stats.critChance;
-      const dmg = isCrit ? Math.floor(stats.atk * stats.critDmg) : stats.atk;
-      e.hp -= dmg;
-      showDamageNumber(e.x, e.y, dmg, isCrit);
-      if (e.hp <= 0) toKill.push(e);
+  // Each equipped CORE fires its own shape
+  const toKill = new Set();
+  const damaged = new Set();
+
+  for (const core of state.equipped.cores) {
+    if (!core) continue;
+    const shape = core.attackShape || 'circle';
+    const splash = Math.floor(core.splash * state.upgrades.splashMult);
+
+    // Show effect
+    showAttackEffect(mx, my, shape, splash, clickAngle, playerX, playerY);
+
+    for (const e of state.enemies) {
+      if (damaged.has(e.id)) continue; // only hit once per click per enemy across all cores
+      const ec = getEnemyCenter(e);
+      let hit = false;
+
+      switch (shape) {
+        case 'circle':
+          hit = isInCircle(ec.x, ec.y, mx, my, splash);
+          break;
+        case 'line':
+          hit = isInLine(ec.x, ec.y, mx, my, clickAngle, 30, splash * 3);
+          break;
+        case 'cone':
+          hit = isInCone(ec.x, ec.y, mx, my, clickAngle, Math.PI / 6, splash * 1.5);
+          break;
+        case 'nova':
+          hit = isInNova(ec.x, ec.y, playerX, playerY, splash * 0.5, splash * 2);
+          break;
+      }
+
+      if (hit) {
+        damaged.add(e.id);
+        const isCrit = Math.random() < stats.critChance;
+        const dmg = isCrit ? Math.floor(stats.atk * stats.critDmg) : stats.atk;
+        e.hp -= dmg;
+        showDamageNumber(e.x, e.y, dmg, isCrit);
+        if (e.hp <= 0) toKill.add(e);
+      }
     }
   }
-  for (const e of toKill) killEnemy(e);
 
+  for (const e of toKill) killEnemy(e, false);
   state.cooldown = stats.cd;
 }
 
-function killEnemy(enemy) {
+function killEnemy(enemy, fromSub) {
   const mult = getScoreXpMult();
   const computed = getComputedStats();
   const xpMult = state.upgrades.xpMult * (1 + computed.xpBonus);
@@ -734,24 +886,41 @@ function killEnemy(enemy) {
   if (Math.random() < dropChance || enemy.elite) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
   }
+
+  // Check for explode subs
+  if (!fromSub) {
+    for (let i = 0; i < 4; i++) {
+      const sub = state.equipped.subs[i];
+      if (sub && sub.autoMode === 'explode') {
+        // Queue explosion at enemy position
+        state.pendingExplosions.push({ x: enemy.x, y: enemy.y, atk: sub.atk });
+      }
+    }
+  }
+
   removeEnemy(enemy);
   checkLevelUp();
 }
 
 // ---- EFFECTS ----
-function showAttackEffect(x, y) {
+function showAttackEffect(x, y, shape, splash, angle, px, py) {
   const el = document.createElement('div');
   el.className = 'attack-effect';
-  el.textContent = '×';
+  switch (shape) {
+    case 'circle': el.textContent = '×'; break;
+    case 'line': el.textContent = '━'; break;
+    case 'cone': el.textContent = '◥'; break;
+    case 'nova': el.textContent = '◎'; el.style.left = (px - 9) + 'px'; el.style.top = (py - 9) + 'px'; canvas.appendChild(el); setTimeout(() => el.remove(), 400); return;
+  }
   el.style.left = (x - 9) + 'px';
   el.style.top = (y - 9) + 'px';
   canvas.appendChild(el);
   setTimeout(() => el.remove(), 400);
 }
 
-function showDamageNumber(x, y, dmg, crit) {
+function showDamageNumber(x, y, dmg, crit, isSub) {
   const el = document.createElement('div');
-  el.className = 'damage-number' + (crit ? ' crit' : '');
+  el.className = 'damage-number' + (crit ? ' crit' : '') + (isSub ? ' sub-dmg' : '');
   el.textContent = (crit ? 'CRIT ' : '-') + dmg;
   el.style.left = (x + rand(-15, 15)) + 'px';
   el.style.top = (y - 10) + 'px';
@@ -759,11 +928,161 @@ function showDamageNumber(x, y, dmg, crit) {
   setTimeout(() => el.remove(), 800);
 }
 
+function showSubEffect(x, y, symbol) {
+  const el = document.createElement('div');
+  el.className = 'sub-attack-effect';
+  el.textContent = symbol;
+  el.style.left = (x - 7) + 'px';
+  el.style.top = (y - 7) + 'px';
+  canvas.appendChild(el);
+  setTimeout(() => el.remove(), 400);
+}
+
+function showChainLine(x1, y1, x2, y2) {
+  const el = document.createElement('div');
+  el.className = 'chain-effect';
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+  el.style.left = x1 + 'px';
+  el.style.top = y1 + 'px';
+  el.style.width = len + 'px';
+  el.style.transform = `rotate(${angle}rad)`;
+  canvas.appendChild(el);
+  setTimeout(() => el.remove(), 300);
+}
+
+// ---- SUB AUTO-ATTACK ----
+function updateSubAttacks(dt) {
+  if (state.paused || state.enemies.length === 0) return;
+  const stats = getComputedStats();
+
+  for (let i = 0; i < 4; i++) {
+    state.subCooldowns[i] = Math.max(0, state.subCooldowns[i] - dt);
+    const sub = state.equipped.subs[i];
+    if (!sub) continue;
+
+    // Orbit is continuous
+    if (sub.autoMode === 'orbit') {
+      state.orbitAngles[i] = (state.orbitAngles[i] || 0) + dt * 3;
+      const ox = state.mouseX + Math.cos(state.orbitAngles[i]) * 150;
+      const oy = state.mouseY + Math.sin(state.orbitAngles[i]) * 150;
+      // Damage enemies near orbit point (every tick)
+      const dps = sub.atk * 2; // DPS
+      for (const e of state.enemies) {
+        const ec = getEnemyCenter(e);
+        if (dist(ec.x, ec.y, ox, oy) < 40) {
+          const dmg = Math.max(1, Math.floor(dps * dt));
+          e.hp -= dmg;
+          if (Math.random() < 0.1) showDamageNumber(e.x, e.y, dmg, false, true);
+          if (e.hp <= 0) {
+            killEnemy(e, true);
+            break;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (state.subCooldowns[i] > 0) continue;
+
+    const mx = state.mouseX, my = state.mouseY;
+    // Find nearest enemy to cursor
+    let nearest = null, nearDist = Infinity;
+    for (const e of state.enemies) {
+      const ec = getEnemyCenter(e);
+      const d = dist(ec.x, ec.y, mx, my);
+      if (d < nearDist) { nearDist = d; nearest = e; }
+    }
+    if (!nearest) continue;
+
+    state.subCooldowns[i] = 1.5;
+
+    switch (sub.autoMode) {
+      case 'nearest': {
+        const ec = getEnemyCenter(nearest);
+        const isCrit = Math.random() < stats.critChance;
+        const dmg = isCrit ? Math.floor(sub.atk * stats.critDmg) : sub.atk;
+        nearest.hp -= dmg;
+        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true);
+        showSubEffect(ec.x, ec.y, '⚡');
+        if (nearest.hp <= 0) killEnemy(nearest, true);
+        break;
+      }
+      case 'chain': {
+        let target = nearest;
+        let chainDmg = sub.atk;
+        const hit = new Set();
+        for (let c = 0; c < 3 && target; c++) {
+          const ec = getEnemyCenter(target);
+          hit.add(target.id);
+          const isCrit = Math.random() < stats.critChance;
+          const dmg = isCrit ? Math.floor(chainDmg * stats.critDmg) : Math.floor(chainDmg);
+          target.hp -= dmg;
+          showDamageNumber(target.x, target.y, dmg, isCrit, true);
+          showSubEffect(ec.x, ec.y, '⚡');
+
+          const prevEc = ec;
+          if (target.hp <= 0) { killEnemy(target, true); }
+
+          // Find next chain target
+          chainDmg *= 0.7;
+          let nextTarget = null, nextDist = Infinity;
+          for (const e of state.enemies) {
+            if (hit.has(e.id)) continue;
+            const eec = getEnemyCenter(e);
+            const d = dist(eec.x, eec.y, prevEc.x, prevEc.y);
+            if (d < 200 && d < nextDist) { nextDist = d; nextTarget = e; }
+          }
+          if (nextTarget) {
+            const nec = getEnemyCenter(nextTarget);
+            showChainLine(prevEc.x, prevEc.y, nec.x, nec.y);
+          }
+          target = nextTarget;
+        }
+        break;
+      }
+      case 'explode': {
+        // Explode mode: just do a normal attack, explosion triggers on kill in killEnemy
+        const ec = getEnemyCenter(nearest);
+        const isCrit = Math.random() < stats.critChance;
+        const dmg = isCrit ? Math.floor(sub.atk * stats.critDmg) : sub.atk;
+        nearest.hp -= dmg;
+        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true);
+        showSubEffect(ec.x, ec.y, '💥');
+        if (nearest.hp <= 0) killEnemy(nearest, false); // false to allow explode
+        break;
+      }
+    }
+  }
+
+  // Process pending explosions
+  const explosions = state.pendingExplosions.splice(0);
+  for (const exp of explosions) {
+    const explosionDmg = Math.floor(exp.atk * 0.5);
+    for (const e of [...state.enemies]) {
+      const ec = getEnemyCenter(e);
+      if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
+        e.hp -= explosionDmg;
+        showDamageNumber(e.x, e.y, explosionDmg, false, true);
+        if (e.hp <= 0) killEnemy(e, true);
+      }
+    }
+  }
+}
+
 // ---- DROPS ----
+function getInvKeyForType(type) {
+  if (type === 'core') return 'cores';
+  if (type === 'sub') return 'subs';
+  return 'modules';
+}
+
 function spawnDrop(x, y, guaranteed) {
-  if (state.inventory.length >= state.maxInventory) return;
-  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
+  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15, 1]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
   const item = makeItem(rarity, state.mapLv);
+  const invKey = getInvKeyForType(item.type);
+  if (state.inventories[invKey].length >= MAX_INVENTORY) return;
 
   const drop = {
     id: item.id,
@@ -776,7 +1095,7 @@ function spawnDrop(x, y, guaranteed) {
 
   const el = document.createElement('div');
   el.className = 'drop ' + rarity;
-  const typeTag = item.type === 'core' ? 'C' : 'M';
+  const typeTag = item.type === 'core' ? 'C' : item.type === 'sub' ? 'S' : 'M';
   el.textContent = `[${typeTag}:${item.name}]`;
   el.style.left = drop.x + 'px';
   el.style.top = drop.y + 'px';
@@ -790,8 +1109,9 @@ function spawnDrop(x, y, guaranteed) {
 }
 
 function pickupDrop(drop) {
-  if (state.inventory.length >= state.maxInventory) return;
-  state.inventory.push(drop.item);
+  const invKey = getInvKeyForType(drop.item.type);
+  if (state.inventories[invKey].length >= MAX_INVENTORY) return;
+  state.inventories[invKey].push(drop.item);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
   renderInventory();
@@ -831,7 +1151,8 @@ function equipItem(item) {
     return;
   }
   slots[emptyIdx] = item;
-  state.inventory = state.inventory.filter(i => i.id !== item.id);
+  const invKey = getInvKeyForType(item.type);
+  state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
   renderInventory();
   updateHUD();
 }
@@ -840,18 +1161,20 @@ function unequipSlot(type, idx) {
   const slots = getSlotsForType(type);
   const item = slots[idx];
   if (!item) return;
-  if (state.inventory.length >= state.maxInventory) {
+  const invKey = getInvKeyForType(type);
+  if (state.inventories[invKey].length >= MAX_INVENTORY) {
     showBanner('INVENTORY FULL');
     return;
   }
   slots[idx] = null;
-  state.inventory.push(item);
+  state.inventories[invKey].push(item);
   renderInventory();
   updateHUD();
 }
 
 function trashItem(item) {
-  state.inventory = state.inventory.filter(i => i.id !== item.id);
+  const invKey = getInvKeyForType(item.type);
+  state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
   renderInventory();
 }
 
@@ -862,8 +1185,10 @@ function showTooltip(item, ev) {
   html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}</div>`;
   if (item.type === 'core') {
     html += `<div class="tt-stats">ATK: ${item.atk} | Splash: ${item.splash} | CD: ${item.cd}s</div>`;
+    html += `<div class="tt-shape">Shape: ${(item.attackShape || 'circle').toUpperCase()}</div>`;
   } else if (item.type === 'sub') {
     html += `<div class="tt-stats">ATK: ${item.atk}</div>`;
+    html += `<div class="tt-auto">Auto: ${(item.autoMode || 'nearest').toUpperCase()}</div>`;
   }
   if (item.affixes && item.affixes.length > 0) {
     html += '<div class="tt-affix">';
@@ -903,7 +1228,10 @@ function renderInventory() {
       const item = slots[i];
       const slot = document.createElement('div');
       slot.className = 'equip-slot ' + (item ? item.rarity : 'empty');
-      slot.innerHTML = `<span class="slot-label">${prefix}${i+1}</span><span class="slot-item">${item ? item.name : '— empty —'}</span>`;
+      let extra = '';
+      if (item && item.type === 'core' && item.attackShape) extra = ` [${item.attackShape[0].toUpperCase()}]`;
+      if (item && item.type === 'sub' && item.autoMode) extra = ` [${item.autoMode[0].toUpperCase()}]`;
+      slot.innerHTML = `<span class="slot-label">${prefix}${i+1}</span><span class="slot-item">${item ? item.name + extra : '— empty —'}</span>`;
       if (item) {
         slot.addEventListener('click', () => unequipSlot(type, i));
         slot.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
@@ -917,14 +1245,30 @@ function renderInventory() {
   renderSlots(subContainer, state.equipped.subs, 'sub', 'S');
   renderSlots(modContainer, state.equipped.modules, 'module', 'M');
 
-  const container = document.getElementById('inv-list');
-  document.getElementById('inv-count').textContent = state.inventory.length;
+  // Render each genre inventory with paging
+  renderInvSection('core', state.inventories.cores, 'inv-list-core', 'inv-page-core', 'inv-count-core', 'cores');
+  renderInvSection('sub', state.inventories.subs, 'inv-list-sub', 'inv-page-sub', 'inv-count-sub', 'subs');
+  renderInvSection('module', state.inventories.modules, 'inv-list-mod', 'inv-page-mod', 'inv-count-mod', 'modules');
+}
+
+function renderInvSection(type, items, listId, pageId, countId, pageKey) {
+  const container = document.getElementById(listId);
+  const pageContainer = document.getElementById(pageId);
+  document.getElementById(countId).textContent = items.length;
   container.innerHTML = '';
-  for (const item of state.inventory) {
+  pageContainer.innerHTML = '';
+
+  const totalPages = Math.max(1, Math.ceil(items.length / INV_PAGE_SIZE));
+  if (state.invPages[pageKey] >= totalPages) state.invPages[pageKey] = Math.max(0, totalPages - 1);
+  const page = state.invPages[pageKey];
+  const start = page * INV_PAGE_SIZE;
+  const end = Math.min(start + INV_PAGE_SIZE, items.length);
+
+  for (let i = start; i < end; i++) {
+    const item = items[i];
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
-    const typeTag = item.type === 'core' ? 'CORE' : item.type === 'sub' ? 'SUB' : 'MOD';
-    row.innerHTML = `<span class="inv-name">${item.name}</span><span class="inv-type">${typeTag}</span><span class="inv-trash">✕</span>`;
+    row.innerHTML = `<span class="inv-name">${item.name}</span><span class="inv-trash">✕</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
     row.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
@@ -932,9 +1276,32 @@ function renderInventory() {
     row.addEventListener('mouseleave', hideTooltip);
     container.appendChild(row);
   }
+
+  if (items.length > INV_PAGE_SIZE) {
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'inv-page-btn';
+    prevBtn.textContent = '◀';
+    prevBtn.disabled = page === 0;
+    prevBtn.addEventListener('click', (ev) => { ev.stopPropagation(); state.invPages[pageKey]--; renderInventory(); });
+    prevBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+
+    const pageLabel = document.createElement('span');
+    pageLabel.textContent = `${page + 1}/${totalPages}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'inv-page-btn';
+    nextBtn.textContent = '▶';
+    nextBtn.disabled = page >= totalPages - 1;
+    nextBtn.addEventListener('click', (ev) => { ev.stopPropagation(); state.invPages[pageKey]++; renderInventory(); });
+    nextBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+
+    pageContainer.appendChild(prevBtn);
+    pageContainer.appendChild(pageLabel);
+    pageContainer.appendChild(nextBtn);
+  }
 }
 
-// ---- LEVEL UP (Skill Point System) ----
+// ---- LEVEL UP ----
 function checkLevelUp() {
   while (state.xp >= state.xpToNext) {
     state.xp -= state.xpToNext;
@@ -1005,6 +1372,32 @@ function updateHUD() {
   updateCrosshair();
 }
 
+// ---- ORBIT RENDERING ----
+let orbitMarkers = [null, null, null, null];
+function updateOrbitVisuals() {
+  for (let i = 0; i < 4; i++) {
+    const sub = state.equipped.subs[i];
+    if (sub && sub.autoMode === 'orbit') {
+      if (!orbitMarkers[i]) {
+        const m = document.createElement('div');
+        m.className = 'orbit-marker';
+        canvas.appendChild(m);
+        orbitMarkers[i] = m;
+      }
+      const angle = state.orbitAngles[i] || 0;
+      const ox = state.mouseX + Math.cos(angle) * 150;
+      const oy = state.mouseY + Math.sin(angle) * 150;
+      orbitMarkers[i].style.left = (ox - 4) + 'px';
+      orbitMarkers[i].style.top = (oy - 4) + 'px';
+    } else {
+      if (orbitMarkers[i]) {
+        orbitMarkers[i].remove();
+        orbitMarkers[i] = null;
+      }
+    }
+  }
+}
+
 // ---- MAIN LOOP ----
 let lastTime = 0;
 function gameLoop(timestamp) {
@@ -1013,17 +1406,14 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
 
   if (!state.paused) {
-    // Cooldown
     if (state.cooldown > 0) state.cooldown = Math.max(0, state.cooldown - dt);
 
-    // Auto-attack while holding mouse
     if (mouseDown && state.cooldown <= 0) {
       if (state.mouseY >= CANVAS_PAD_TOP && state.mouseY <= window.innerHeight - CANVAS_PAD_BOT) {
         attack(state.mouseX, state.mouseY);
       }
     }
 
-    // Continuous spawn
     state.spawnTimer += dt;
     if (state.spawnTimer >= SPAWN_INTERVAL && state.enemies.length < getMaxEnemies()) {
       state.spawnTimer = 0;
@@ -1032,6 +1422,8 @@ function gameLoop(timestamp) {
 
     updateEnemies(dt);
     updateDrops(dt);
+    updateSubAttacks(dt);
+    updateOrbitVisuals();
   }
 
   updateHUD();
@@ -1061,7 +1453,6 @@ document.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseDown = false;
 });
 
-// MapLv buttons
 document.getElementById('maplv-up').addEventListener('click', (ev) => {
   ev.stopPropagation();
   state.mapLv++;
@@ -1072,7 +1463,6 @@ document.getElementById('maplv-down').addEventListener('click', (ev) => {
   if (state.mapLv > 1) state.mapLv--;
   updateHUD();
 });
-// Prevent attacks when clicking MapLv buttons
 document.getElementById('maplv-up').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
 document.getElementById('maplv-down').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
 
@@ -1088,11 +1478,11 @@ function init() {
     splash: 50,
     cd: 0.5,
     affixes: [],
+    attackShape: 'circle',
   };
   state.running = true;
   lastTime = performance.now();
-  // Spawn initial enemies
-  const initial = Math.min(getMaxEnemies(), 5);
+  const initial = Math.min(getMaxEnemies(), 12);
   for (let i = 0; i < initial; i++) spawnEnemy();
   renderUpgradePanel();
   renderInventory();
