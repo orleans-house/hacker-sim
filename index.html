@@ -1321,6 +1321,9 @@ function killEnemy(enemy, fromSub) {
   if (enemy.boss) {
     state.bossActive = false;
     showBanner('BOSS DEFEATED');
+    screenShake(12, 500);
+  } else if (enemy.elite) {
+    screenShake(4, 200);
   }
 
   // Splitting mutation: spawn 2 smaller enemies
@@ -1443,6 +1446,21 @@ function showDamageNumber(x, y, dmg, crit, isSub, shape, subMode) {
   if (!isSub) playHitSound(crit, shape);
   else if (subMode) playSubSound(subMode);
   logDamage(dmg);
+}
+
+function screenShake(intensity, duration) {
+  const el = document.getElementById('game-canvas');
+  const start = performance.now();
+  function shake() {
+    const elapsed = performance.now() - start;
+    if (elapsed > duration) { el.style.transform = ''; return; }
+    const decay = 1 - elapsed / duration;
+    const dx = (Math.random() - 0.5) * intensity * decay * 2;
+    const dy = (Math.random() - 0.5) * intensity * decay * 2;
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(shake);
+  }
+  shake();
 }
 
 function showCreditNumber(x, y, amount) {
