@@ -299,6 +299,7 @@ function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
 
 // ---- ENEMY MANAGEMENT ----
 function spawnEnemy() {
+  if (!state.running) return;
   const isElite = state.wave > 1 && Math.random() < 0.05 + state.wave * 0.01;
   const template = isElite ? ELITE_TYPE : ENEMY_TYPES[randInt(0, ENEMY_TYPES.length - 1)];
   const scaledHp = Math.floor(template.baseHp * (1 + (state.wave - 1) * 0.4));
@@ -337,6 +338,8 @@ function spawnEnemy() {
   el.style.top = y + 'px';
   canvas.appendChild(el);
   enemy.el = el;
+  enemy.labelEl = el.querySelector('.label');
+  enemy.hpFillEl = el.querySelector('.hp-fill');
   state.enemies.push(enemy);
 }
 
@@ -365,9 +368,9 @@ function updateEnemies(dt) {
     // Update DOM
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
-    e.el.querySelector('.label').textContent = `[${e.tag}:${e.hp}]`;
+    e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
     const hpPct = Math.max(0, e.hp / e.maxHp * 100);
-    e.el.querySelector('.hp-fill').style.width = hpPct + '%';
+    e.hpFillEl.style.width = hpPct + '%';
   }
 }
 
@@ -507,11 +510,11 @@ function checkLevelUp() {
 const SKILL_POOL = [
   { name: '+20% ATK', apply: () => { state.upgrades.atkMult += 0.2; } },
   { name: '+20% Range', apply: () => { state.upgrades.rangeMult += 0.2; } },
-  { name: '-15% Cooldown', apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult - 0.15); } },
+  { name: '-10% Cooldown', apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
   { name: '+1 AoE Target', apply: () => { state.upgrades.aoe += 1; } },
   { name: '+10% Crit Chance', apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
   { name: '+50% Crit Damage', apply: () => { state.upgrades.critMult += 0.5; } },
-  { name: '-0.5%/s Trace Rate', apply: () => { state.upgrades.traceReduce += 0.5; } },
+  { name: '-10% Trace Rate', apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
 ];
 
 function showLevelUp() {
@@ -596,7 +599,7 @@ function gameLoop(timestamp) {
 
   if (!state.paused) {
     // Trace
-    const traceRate = Math.max(0, TRACE_PER_SEC + state.wave * 0.05 - state.upgrades.traceReduce);
+    const traceRate = Math.max(0.15, (TRACE_PER_SEC + state.wave * 0.05) * (1 - state.upgrades.traceReduce));
     state.trace += traceRate * dt;
     if (state.trace >= 100) {
       showResult(false);
@@ -639,6 +642,7 @@ document.addEventListener('mousemove', (e) => {
 });
 document.addEventListener('click', (e) => {
   if (!state.running || state.paused) return;
+  if (e.clientY < CANVAS_PAD_TOP || e.clientY > window.innerHeight - CANVAS_PAD_BOT) return;
   attack(e.clientX, e.clientY);
 });
 
