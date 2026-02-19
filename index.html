@@ -60,6 +60,52 @@ body {
   font-size: 13px;
 }
 
+/* Inventory panel (left side) */
+#inventory-panel {
+  position: fixed;
+  top: 50px;
+  left: 10px;
+  width: 230px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: rgba(0,0,0,0.85);
+  border: 1px solid #00ff41;
+  padding: 8px;
+  z-index: 100;
+  font-size: 12px;
+}
+#inventory-panel h3 {
+  color: #ffaa00;
+  font-size: 13px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.inv-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2px 0;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.inv-item:hover { border-color: #00ff41; }
+.inv-item.equipped { border-color: #ffaa00; background: rgba(255,170,0,0.1); }
+.inv-item .inv-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-item .inv-stats { font-size: 10px; color: #888; margin-left: 4px; white-space: nowrap; }
+.inv-item .inv-trash {
+  margin-left: 4px;
+  color: #ff4444;
+  cursor: pointer;
+  font-size: 11px;
+}
+.inv-item .inv-trash:hover { color: #ff8888; }
+.inv-item.common .inv-name { color: #aaa; }
+.inv-item.uncommon .inv-name { color: #00ff41; }
+.inv-item.rare .inv-name { color: #4488ff; }
+.inv-item.epic .inv-name { color: #aa44ff; }
+.inv-item.legendary .inv-name { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
+
 /* Enemies */
 .enemy {
   position: absolute;
@@ -229,8 +275,13 @@ body {
 
 <div id="bottom-hud">
   <div>EQUIP: <span id="hud-weapon">Ping Flood [Common]</span></div>
-  <div>ATK: <span id="hud-atk">10</span> | RANGE: <span id="hud-range">60</span> | CD: <span id="hud-cd">0.5</span>s</div>
+  <div>ATK: <span id="hud-atk">10</span> | SPLASH: <span id="hud-splash">30</span> | CD: <span id="hud-cd">0.5</span>s</div>
   <div>KILLS: <span id="hud-kills">0</span></div>
+</div>
+
+<div id="inventory-panel">
+  <h3>INVENTORY [<span id="inv-count">0</span>/20]</h3>
+  <div id="inv-list"></div>
 </div>
 
 <div id="game-canvas"></div>
@@ -284,13 +335,15 @@ let state = {
   trace: 0,
   enemies: [],
   drops: [],
-  weapon: { name: 'Ping Flood', rarity: 'common', atk: 10, range: 60, cd: 0.5, bonuses: [] },
+  weapon: { id: 0, name: 'Ping Flood', rarity: 'common', atk: 10, splash: 30, cd: 0.5 },
   cooldown: 0,
   mouseX: 0,
   mouseY: 0,
-  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, aoe: 0, critChance: 0.05, critMult: 2 },
+  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, splashMult: 1, critChance: 0.05, critMult: 2 },
   sp: 0,
   skillLevels: {},
+  inventory: [],
+  maxInventory: 20,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -388,31 +441,24 @@ function attack(mx, my) {
   if (state.cooldown > 0 || state.paused) return;
   const w = state.weapon;
   const atkPower = Math.floor(w.atk * state.upgrades.atkMult);
-  const range = w.range * state.upgrades.rangeMult;
-  const aoe = state.upgrades.aoe;
+  const splash = (w.splash || 30) * state.upgrades.splashMult;
 
   // Show click effect
   showAttackEffect(mx, my);
 
-  // Find enemies in range
-  let targets = [];
+  // Hit ALL enemies within splash radius of click point
+  const toKill = [];
   for (const e of state.enemies) {
     const d = dist(mx, my, e.x, e.y);
-    if (d <= range) targets.push({ enemy: e, dist: d });
-  }
-  targets.sort((a, b) => a.dist - b.dist);
-  if (aoe === 0) targets = targets.slice(0, 1);
-  else targets = targets.slice(0, 1 + aoe);
-
-  for (const t of targets) {
-    const isCrit = Math.random() < state.upgrades.critChance;
-    const dmg = isCrit ? Math.floor(atkPower * state.upgrades.critMult) : atkPower;
-    t.enemy.hp -= dmg;
-    showDamageNumber(t.enemy.x, t.enemy.y, dmg, isCrit);
-    if (t.enemy.hp <= 0) {
-      killEnemy(t.enemy);
+    if (d <= splash) {
+      const isCrit = Math.random() < state.upgrades.critChance;
+      const dmg = isCrit ? Math.floor(atkPower * state.upgrades.critMult) : atkPower;
+      e.hp -= dmg;
+      showDamageNumber(e.x, e.y, dmg, isCrit);
+      if (e.hp <= 0) toKill.push(e);
     }
   }
+  for (const e of toKill) killEnemy(e);
 
   state.cooldown = w.cd * state.upgrades.cdMult;
 }
@@ -452,46 +498,82 @@ function showDamageNumber(x, y, dmg, crit) {
 }
 
 // ---- DROPS ----
-function spawnDrop(x, y, guaranteed) {
-  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
+function makeWeapon(rarity, wave) {
   const rarityIdx = RARITIES.indexOf(rarity);
   const baseName = WEAPON_NAMES[randInt(0, WEAPON_NAMES.length - 1)];
-  const baseAtk = 8 + rarityIdx * 6 + randInt(0, 4 + state.wave);
-  const baseRange = 50 + rarityIdx * 15 + randInt(0, 10);
-  const baseCd = Math.max(0.15, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05));
-
-  const drop = {
+  return {
     id: Date.now() + Math.random(),
-    x: x + rand(-20, 20),
-    y: y + rand(-10, 10),
     name: baseName,
     rarity,
-    atk: baseAtk,
-    range: baseRange,
-    cd: Math.round(baseCd * 100) / 100,
+    atk: 8 + rarityIdx * 6 + randInt(0, 4 + wave),
+    splash: 25 + rarityIdx * 10 + randInt(0, 8),
+    cd: Math.round(Math.max(0.15, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) * 100) / 100,
+  };
+}
+
+function spawnDrop(x, y, guaranteed) {
+  if (state.inventory.length >= state.maxInventory) return; // inventory full
+  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
+  const weapon = makeWeapon(rarity, state.wave);
+
+  const drop = {
+    id: weapon.id,
+    x: x + rand(-20, 20),
+    y: y + rand(-10, 10),
+    weapon,
     ttl: 10,
     el: null,
   };
 
   const el = document.createElement('div');
   el.className = 'drop ' + rarity;
-  el.textContent = `[${baseName}]`;
+  el.textContent = `[${weapon.name}]`;
   el.style.left = drop.x + 'px';
   el.style.top = drop.y + 'px';
   el.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    equipDrop(drop);
+    pickupDrop(drop);
   });
   canvas.appendChild(el);
   drop.el = el;
   state.drops.push(drop);
 }
 
-function equipDrop(drop) {
-  state.weapon = { name: drop.name, rarity: drop.rarity, atk: drop.atk, range: drop.range, cd: drop.cd };
+function pickupDrop(drop) {
+  if (state.inventory.length >= state.maxInventory) return;
+  state.inventory.push(drop.weapon);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
+  renderInventory();
+}
+
+function equipWeapon(weapon) {
+  // Swap current weapon into inventory, equip new one
+  const old = { ...state.weapon };
+  state.weapon = { name: weapon.name, rarity: weapon.rarity, atk: weapon.atk, splash: weapon.splash, cd: weapon.cd };
+  state.inventory = state.inventory.filter(w => w.id !== weapon.id);
+  state.inventory.push(old);
+  renderInventory();
   updateHUD();
+}
+
+function trashWeapon(weapon) {
+  state.inventory = state.inventory.filter(w => w.id !== weapon.id);
+  renderInventory();
+}
+
+function renderInventory() {
+  const container = document.getElementById('inv-list');
+  document.getElementById('inv-count').textContent = state.inventory.length;
+  container.innerHTML = '';
+  for (const w of state.inventory) {
+    const row = document.createElement('div');
+    row.className = 'inv-item ' + w.rarity;
+    row.innerHTML = `<span class="inv-name">${w.name}</span><span class="inv-stats">A${w.atk} S${w.splash} C${w.cd}</span><span class="inv-trash">✕</span>`;
+    row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipWeapon(w); });
+    row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashWeapon(w); });
+    container.appendChild(row);
+  }
 }
 
 function updateDrops(dt) {
@@ -519,9 +601,8 @@ function checkLevelUp() {
 
 const SKILL_POOL = [
   { id: 'atk', name: 'ATK +20%', cost: 1, maxLv: 10, apply: () => { state.upgrades.atkMult += 0.2; } },
-  { id: 'range', name: 'Range +20%', cost: 1, maxLv: 8, apply: () => { state.upgrades.rangeMult += 0.2; } },
   { id: 'cd', name: 'CD -10%', cost: 1, maxLv: 8, apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
-  { id: 'aoe', name: 'AoE +1', cost: 2, maxLv: 5, apply: () => { state.upgrades.aoe += 1; } },
+  { id: 'splash', name: 'Splash +20%', cost: 2, maxLv: 5, apply: () => { state.upgrades.splashMult += 0.2; } },
   { id: 'crit', name: 'Crit +10%', cost: 1, maxLv: 6, apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
   { id: 'critdmg', name: 'CritDMG +50%', cost: 2, maxLv: 5, apply: () => { state.upgrades.critMult += 0.5; } },
   { id: 'trace', name: 'Trace -10%', cost: 2, maxLv: 5, apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
@@ -593,7 +674,7 @@ function updateHUD() {
   const w = state.weapon;
   document.getElementById('hud-weapon').textContent = `${w.name} [${w.rarity.charAt(0).toUpperCase() + w.rarity.slice(1)}]`;
   document.getElementById('hud-atk').textContent = Math.floor(w.atk * state.upgrades.atkMult);
-  document.getElementById('hud-range').textContent = Math.floor(w.range * state.upgrades.rangeMult);
+  document.getElementById('hud-splash').textContent = Math.floor((w.splash || 30) * state.upgrades.splashMult);
   document.getElementById('hud-cd').textContent = (w.cd * state.upgrades.cdMult).toFixed(2);
 }
 
@@ -682,6 +763,7 @@ function init() {
   lastTime = performance.now();
   startWave();
   renderUpgradePanel();
+  renderInventory();
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
