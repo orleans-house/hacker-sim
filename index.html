@@ -553,11 +553,14 @@ const CANVAS_PAD_TOP = 40;
 const CANVAS_PAD_BOT = 40;
 const SPAWN_INTERVAL = 0.3;
 const ENEMY_TYPES = [
-  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10 },
-  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10 },
-  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30 },
-  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50 },
-  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20 },
+  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10, behavior: 'normal' },
+  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10, behavior: 'swarm' },
+  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30, behavior: 'guardian' },
+  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50, behavior: 'regen' },
+  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20, behavior: 'evader' },
+  { tag: 'WORM', baseHp: 10, speed: 70, credits: 1, score: 5, behavior: 'swarm' },
+  { tag: 'DAEMON', baseHp: 40, speed: 25, credits: 4, score: 25, behavior: 'teleport' },
+  { tag: 'SENTRY', baseHp: 60, speed: 5, credits: 6, score: 35, behavior: 'stationary' },
 ];
 const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, credits: 30, score: 200, elite: true };
 
@@ -1058,6 +1061,7 @@ function spawnEnemy() {
     credits: template.credits,
     score: template.score,
     elite: !!template.elite,
+    behavior: template.behavior || 'normal',
     x, y,
     el: null,
     vx: 0, vy: 0,
@@ -1067,6 +1071,8 @@ function spawnEnemy() {
     shield: 0,
     splits: false,
     berserker: false,
+    teleportCd: 0,
+    regenTimer: 0,
   };
 
   // Apply mutation to elites (Corruption: multiple mutations at high MapLv)
@@ -1192,6 +1198,73 @@ function updateEnemies(dt) {
     }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
+    // Behavior-specific updates
+    switch (e.behavior) {
+      case 'evader': {
+        // Flee from cursor
+        const dx = e.x - state.mouseX, dy = e.y - state.mouseY;
+        const md = Math.hypot(dx, dy) || 1;
+        if (md < 200) {
+          e.vx += (dx / md) * 60 * dt;
+          e.vy += (dy / md) * 60 * dt;
+        }
+        break;
+      }
+      case 'guardian': {
+        // Shield nearby non-elite allies periodically
+        if (Math.random() < dt * 0.5) {
+          for (const other of state.enemies) {
+            if (other.id === e.id || other.elite) continue;
+            const d = dist(e.x, e.y, other.x, other.y);
+            if (d < 80 && other.shield <= 0) {
+              other.shield = Math.floor(other.maxHp * 0.15);
+              break;
+            }
+          }
+        }
+        break;
+      }
+      case 'regen': {
+        // Slowly regenerate HP
+        e.regenTimer = (e.regenTimer || 0) + dt;
+        if (e.regenTimer >= 1.0) {
+          e.regenTimer = 0;
+          e.hp = Math.min(e.maxHp, e.hp + Math.floor(e.maxHp * 0.05));
+        }
+        break;
+      }
+      case 'teleport': {
+        // Random short teleport
+        e.teleportCd = (e.teleportCd || 0) - dt;
+        if (e.teleportCd <= 0) {
+          e.teleportCd = 3 + Math.random() * 2;
+          e.x += rand(-100, 100);
+          e.y += rand(-80, 80);
+          e.x = Math.max(10, Math.min(w - 10, e.x));
+          e.y = Math.max(CANVAS_PAD_TOP + 10, Math.min(h - CANVAS_PAD_BOT - 10, e.y));
+        }
+        break;
+      }
+      case 'swarm': {
+        // Cluster toward other swarm enemies
+        for (const other of state.enemies) {
+          if (other.id === e.id || other.behavior !== 'swarm') continue;
+          const d = dist(e.x, e.y, other.x, other.y);
+          if (d > 30 && d < 120) {
+            e.vx += (other.x - e.x) / d * 15 * dt;
+            e.vy += (other.y - e.y) / d * 15 * dt;
+          }
+        }
+        break;
+      }
+      case 'stationary': {
+        // Barely moves, high resistance to pull
+        e.vx *= 0.9;
+        e.vy *= 0.9;
+        break;
+      }
+    }
+
     // Berserker: speed increases as HP drops
     if (e.berserker && e.hp < e.maxHp * 0.5) {
       const rage = 1 + (1 - e.hp / e.maxHp) * 2;
