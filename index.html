@@ -449,6 +449,7 @@ body {
   <div>ATK: <span id="hud-atk">10</span> | SPLASH: <span id="hud-splash">50</span> | CD: <span id="hud-cd">0.50</span>s</div>
   <div>CRIT: <span id="hud-crit">5</span>% x<span id="hud-critdmg">2.0</span></div>
   <div>KILLS: <span id="hud-kills">0</span></div>
+  <div id="hud-synergy"></div>
 </div>
 
 <div id="inventory-panel">
@@ -532,6 +533,55 @@ const RARITY_WEIGHTS = [50, 30, 14, 5, 1, 0.1];
 const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, unique: 5 };
 const ATTACK_SHAPES = ['circle', 'line', 'cone', 'nova', 'pierce-burst', 'lock-on'];
 const AUTO_MODES = ['nearest', 'chain', 'explode', 'orbit', 'parasite', 'drone'];
+
+// ---- ARCHETYPES ----
+const ARCHETYPES = {
+  speed: { label: 'SPEED', color: '#00ffff', desc: 'CD -5% per item' },
+  area:  { label: 'AREA',  color: '#ff8800', desc: 'Splash +10% per item' },
+  dot:   { label: 'DOT',   color: '#88ff00', desc: 'SUB ATK +8% per item' },
+};
+const CORE_SHAPE_ARCHETYPE = { line: 'speed', 'pierce-burst': 'speed', 'lock-on': 'speed', cone: 'area', nova: 'area', circle: 'area' };
+const SUB_MODE_ARCHETYPE = { nearest: 'speed', drone: 'speed', chain: 'dot', explode: 'dot', parasite: 'dot', orbit: 'area' };
+
+// Named unique items (templates)
+const NAMED_UNIQUES = [
+  {
+    name: 'Quicksilver Protocol', type: 'core', archetype: 'speed',
+    attackShape: 'pierce-burst',
+    baseAtk: 30, baseSplash: 30, baseCd: 0.15,
+    fixedAffixes: [
+      { id: 'pctCd', value: 15, label: (v) => `CD -${v}%` },
+      { id: 'critChance', value: 8, label: (v) => `CritChance +${v}%` },
+      { id: 'critDmg', value: 20, label: (v) => `CritDMG +${v}%` },
+      { id: 'flatAtk', value: 15, label: (v) => `ATK +${v}` },
+      { id: 'pctAtk', value: 10, label: (v) => `ATK +${v}%` },
+    ],
+  },
+  {
+    name: 'Cascade Engine', type: 'core', archetype: 'area',
+    attackShape: 'nova',
+    baseAtk: 18, baseSplash: 200, baseCd: 0.8,
+    fixedAffixes: [
+      { id: 'flatSplash', value: 30, label: (v) => `Splash +${v}` },
+      { id: 'pctAtk', value: 15, label: (v) => `ATK +${v}%` },
+      { id: 'dropRate', value: 5, label: (v) => `DropRate +${v}%` },
+      { id: 'flatAtk', value: 10, label: (v) => `ATK +${v}` },
+      { id: 'critDmg', value: 12, label: (v) => `CritDMG +${v}%` },
+    ],
+  },
+  {
+    name: 'Plague Vector', type: 'sub', archetype: 'dot',
+    autoMode: 'parasite',
+    baseAtk: 25,
+    fixedAffixes: [
+      { id: 'pctAtk', value: 20, label: (v) => `ATK +${v}%` },
+      { id: 'xpBonus', value: 10, label: (v) => `Credits +${v}%` },
+      { id: 'critDmg', value: 15, label: (v) => `CritDMG +${v}%` },
+      { id: 'critChance', value: 5, label: (v) => `CritChance +${v}%` },
+      { id: 'flatAtk', value: 12, label: (v) => `ATK +${v}` },
+    ],
+  },
+];
 const CORE_NAMES = [
   'Ping Flood','Port Scanner','SQL Injector','Buffer Overflow',
   'Zero-Day Exploit','Rootkit Launcher','Worm Deployer','Trojan Horse',
@@ -788,7 +838,24 @@ function getComputedStats() {
   xpBonus = Math.min(5, xpBonus);                   // max +500% credits
   dropBonus = Math.min(3, dropBonus);                // max +300% drop rate
 
-  return { atk, splash, cd, critChance, critDmg, xpBonus, dropBonus, coreCount };
+  // ---- SYNERGY BONUSES ----
+  const synergyCounts = { speed: 0, area: 0, dot: 0 };
+  for (const item of allEquipped) {
+    if (item && item.archetype && synergyCounts[item.archetype] !== undefined) {
+      synergyCounts[item.archetype]++;
+    }
+  }
+  // SPEED: CD -5% per item, max -30%
+  const speedBonus = Math.min(6, synergyCounts.speed) * 0.05;
+  cd = cd * (1 - speedBonus);
+  cd = Math.max(0.15, Math.round(cd * 100) / 100);
+  // AREA: Splash +10% per item, max +60%
+  const areaBonus = Math.min(6, synergyCounts.area) * 0.10;
+  splash = Math.min(200, Math.floor(splash * (1 + areaBonus)));
+  // DOT: SUB ATK +8% per item, max +48% (stored as multiplier for sub damage)
+  const dotBonus = Math.min(6, synergyCounts.dot) * 0.08;
+
+  return { atk, splash, cd, critChance, critDmg, xpBonus, dropBonus, coreCount, synergyCounts, dotBonus };
 }
 
 // ---- ITEM GENERATION ----
@@ -820,6 +887,7 @@ function makeItem(rarity, mapLv) {
   if (itemType === 'core') {
     const baseName = CORE_NAMES[randInt(0, CORE_NAMES.length - 1)];
     const attackShape = ATTACK_SHAPES[randInt(0, ATTACK_SHAPES.length - 1)];
+    const archetype = CORE_SHAPE_ARCHETYPE[attackShape] || 'area';
     return {
       id: Date.now() + Math.random(),
       type: 'core',
@@ -830,10 +898,12 @@ function makeItem(rarity, mapLv) {
       cd: Math.round(Math.max(0.1, (0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) / uniqueMult) * 100) / 100,
       affixes,
       attackShape,
+      archetype,
     };
   } else if (itemType === 'sub') {
     const baseName = SUB_NAMES[randInt(0, SUB_NAMES.length - 1)];
     const autoMode = AUTO_MODES[randInt(0, AUTO_MODES.length - 1)];
+    const archetype = SUB_MODE_ARCHETYPE[autoMode] || 'speed';
     return {
       id: Date.now() + Math.random(),
       type: 'sub',
@@ -842,15 +912,19 @@ function makeItem(rarity, mapLv) {
       atk: Math.floor((4 + rarityIdx * 4 + randInt(0, 3)) * ilvScale * uniqueMult),
       affixes,
       autoMode,
+      archetype,
     };
   } else {
     const baseName = MODULE_NAMES[randInt(0, MODULE_NAMES.length - 1)];
+    const archetypeKeys = Object.keys(ARCHETYPES);
+    const archetype = archetypeKeys[randInt(0, archetypeKeys.length - 1)];
     return {
       id: Date.now() + Math.random(),
       type: 'module',
       name: baseName,
       rarity, ilv,
       affixes,
+      archetype,
     };
   }
 }
@@ -1129,6 +1203,16 @@ function killEnemy(enemy, fromSub) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
   }
 
+  // Named unique drop from elites (2% chance each)
+  if (enemy.elite) {
+    for (const tmpl of NAMED_UNIQUES) {
+      if (Math.random() < 0.02) {
+        spawnNamedUniqueDrop(enemy.x, enemy.y, tmpl, state.mapLv);
+        break; // max 1 named unique per kill
+      }
+    }
+  }
+
   // Check for explode subs
   if (!fromSub) {
     for (let i = 0; i < 4; i++) {
@@ -1210,9 +1294,15 @@ function showChainLine(x1, y1, x2, y2) {
 }
 
 // ---- SUB AUTO-ATTACK ----
+function getSubDmgMult() {
+  const stats = getComputedStats();
+  return (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1) * (1 + (stats.dotBonus || 0));
+}
+
 function updateSubAttacks(dt) {
   if (state.paused || state.enemies.length === 0) return;
   const stats = getComputedStats();
+  const subMult = getSubDmgMult();
 
   for (let i = 0; i < 4; i++) {
     state.subCooldowns[i] = Math.max(0, state.subCooldowns[i] - dt);
@@ -1228,7 +1318,7 @@ function updateSubAttacks(dt) {
       const ox = state.mouseX + Math.cos(state.orbitAngles[i]) * 150;
       const oy = state.mouseY + Math.sin(state.orbitAngles[i]) * 150;
       // Damage enemies near orbit point (every tick)
-      const dps = sub.atk * 2 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1); // DPS
+      const dps = sub.atk * 2 * subMult; // DPS
       for (const e of state.enemies) {
         const ec = getEnemyCenter(e);
         if (dist(ec.x, ec.y, ox, oy) < 40) {
@@ -1262,7 +1352,7 @@ function updateSubAttacks(dt) {
       case 'nearest': {
         const ec = getEnemyCenter(nearest);
         const isCrit = Math.random() < stats.critChance;
-        const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
         nearest.hp -= dmg;
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
@@ -1272,7 +1362,7 @@ function updateSubAttacks(dt) {
       }
       case 'chain': {
         let target = nearest;
-        let chainDmg = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        let chainDmg = sub.atk * subMult;
         const hit = new Set();
         for (let c = 0; c < 3 && target; c++) {
           const ec = getEnemyCenter(target);
@@ -1306,7 +1396,7 @@ function updateSubAttacks(dt) {
       case 'explode': {
         const ec = getEnemyCenter(nearest);
         const isCrit = Math.random() < stats.critChance;
-        const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
         nearest.hp -= dmg;
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
@@ -1335,11 +1425,11 @@ function updateSubAttacks(dt) {
             }
           }
           if (target) {
-            const dmgPerSec = sub.atk * 0.3 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+            const dmgPerSec = sub.atk * 0.3 * subMult;
             state.infections.push({ enemyId: target.id, subIdx: i, dmgPerSec, ttl: 5 });
             playSubSound('parasite');
             const ec = getEnemyCenter(target);
-            showSubEffect(ec.x, ec.y, '☣');
+            showSubEffect(ec.x, ec.y, '[P]');
           }
         }
         break;
@@ -1350,7 +1440,7 @@ function updateSubAttacks(dt) {
   // Process pending explosions
   const explosions = state.pendingExplosions.splice(0);
   for (const exp of explosions) {
-    const explosionDmg = Math.floor(exp.atk * 0.5 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1));
+    const explosionDmg = Math.floor(exp.atk * 0.5 * subMult);
     for (const e of [...state.enemies]) {
       const ec = getEnemyCenter(e);
       if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
@@ -1360,6 +1450,58 @@ function updateSubAttacks(dt) {
       }
     }
   }
+}
+
+// ---- NAMED UNIQUE GENERATION ----
+function makeNamedUnique(tmpl, mapLv) {
+  const ilv = mapLv;
+  const ilvScale = 1 + (ilv - 1) * 0.15;
+  const item = {
+    id: Date.now() + Math.random(),
+    type: tmpl.type,
+    name: tmpl.name,
+    rarity: 'unique',
+    ilv,
+    affixes: tmpl.fixedAffixes.map(a => ({ ...a })),
+    archetype: tmpl.archetype,
+    namedUnique: true,
+  };
+  if (tmpl.type === 'core') {
+    item.atk = Math.floor(tmpl.baseAtk * ilvScale * 1.5);
+    item.splash = Math.floor(tmpl.baseSplash * (1 + (ilv - 1) * 0.05) * 1.5);
+    item.cd = tmpl.baseCd;
+    item.attackShape = tmpl.attackShape;
+  } else if (tmpl.type === 'sub') {
+    item.atk = Math.floor(tmpl.baseAtk * ilvScale * 1.5);
+    item.autoMode = tmpl.autoMode;
+  }
+  return item;
+}
+
+function spawnNamedUniqueDrop(x, y, tmpl, mapLv) {
+  const item = makeNamedUnique(tmpl, mapLv);
+  const invKey = getInvKeyForType(item.type);
+  if (state.inventories[invKey].length >= MAX_INVENTORY) return;
+
+  const drop = {
+    id: item.id,
+    x: x + rand(-20, 20),
+    y: y + rand(-10, 10),
+    item,
+    ttl: 15, // longer TTL for named uniques
+    el: null,
+  };
+
+  const el = document.createElement('div');
+  el.className = 'drop unique';
+  const typeTag = item.type === 'core' ? 'C' : item.type === 'sub' ? 'S' : 'M';
+  el.textContent = `[${typeTag}:iL${item.ilv} ${item.name}]`;
+  el.style.left = drop.x + 'px';
+  el.style.top = drop.y + 'px';
+  el.addEventListener('mouseenter', () => { pickupDrop(drop); });
+  canvas.appendChild(el);
+  drop.el = el;
+  state.drops.push(drop);
 }
 
 // ---- DROPS ----
@@ -1500,7 +1642,10 @@ function trashItem(item) {
 const tooltipEl = document.getElementById('item-tooltip');
 function showTooltip(item, ev) {
   let html = `<div class="tt-name">${item.name}</div>`;
-  html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}</div>`;
+  const archLabel = item.archetype && ARCHETYPES[item.archetype]
+    ? ` | <span style="color:${ARCHETYPES[item.archetype].color}">${ARCHETYPES[item.archetype].label}</span>`
+    : '';
+  html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}${archLabel}</div>`;
   if (item.type === 'core') {
     html += `<div class="tt-stats">ATK: ${item.atk} | Splash: ${item.splash} | CD: ${item.cd}s</div>`;
     html += `<div class="tt-shape">Shape: ${(item.attackShape || 'circle').toUpperCase()}</div>`;
@@ -1633,7 +1778,7 @@ function renderInvSection(type, items, listId, pageId, countId, pageKey) {
     const item = items[i];
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
-    row.innerHTML = `<span class="inv-name">[iL${item.ilv}] ${item.name}</span><span class="inv-trash">✕</span>`;
+    row.innerHTML = `<span class="inv-name">[iL${item.ilv}] ${item.name}</span><span class="inv-trash">x</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
     row.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
@@ -1735,6 +1880,20 @@ function updateHUD() {
   const critDmgEl = document.getElementById('hud-critdmg');
   critDmgEl.textContent = stats.critDmg.toFixed(1);
   critDmgEl.style.color = stats.critDmg >= 10 ? '#ffaa00' : '';
+
+  // Synergy display
+  const synEl = document.getElementById('hud-synergy');
+  const synParts = [];
+  if (stats.synergyCounts) {
+    for (const [key, count] of Object.entries(stats.synergyCounts)) {
+      if (count >= 2) {
+        const arch = ARCHETYPES[key];
+        synParts.push(`<span style="color:${arch.color}">${arch.label}(${count})</span>`);
+      }
+    }
+  }
+  synEl.innerHTML = synParts.length > 0 ? 'SYN:' + synParts.join(' ') : '';
+
   updateCrosshair();
 }
 
@@ -1792,7 +1951,7 @@ function updateInfections(dt) {
         if (myCount <= 3) { // will be reduced by 1 after splice
           state.infections.push({ enemyId: closest.id, subIdx: inf.subIdx, dmgPerSec: inf.dmgPerSec, ttl: 5 });
           const cec = getEnemyCenter(closest);
-          showSubEffect(cec.x, cec.y, '☣');
+          showSubEffect(cec.x, cec.y, '[P]');
           playSubSound('parasite');
         }
       }
@@ -1841,7 +2000,7 @@ function updateDrones(dt) {
     if (nearest) {
       const sub = state.equipped.subs[d.subIdx];
       if (!sub) continue;
-      const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+      const subBase = sub.atk * getSubDmgMult();
       const isCrit = Math.random() < stats.critChance;
       const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
       nearest.hp -= dmg;
@@ -2067,6 +2226,7 @@ function init() {
       cd: 0.5,
       affixes: [],
       attackShape: 'circle',
+      archetype: 'area',
     };
   }
   state.running = true;
