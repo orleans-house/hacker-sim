@@ -548,10 +548,10 @@ let state = {
 const canvas = document.getElementById('game-canvas');
 
 // ---- MAP LEVEL HELPERS ----
-function getEnemyHpMult() { return 1 + (state.mapLv - 1) * 0.5; }
+function getEnemyHpMult() { return Math.pow(1.08, state.mapLv - 1); }
 function getMaxEnemies() { return Math.min(80, 12 + state.mapLv * 4); }
-function getEliteRate() { return Math.min(0.3, 0.03 + state.mapLv * 0.02); }
-function getScoreXpMult() { return 1 + (state.mapLv - 1) * 0.3; }
+function getEliteRate() { return Math.min(0.5, 0.03 + state.mapLv * 0.01); }
+function getScoreXpMult() { return Math.pow(1.06, state.mapLv - 1); }
 
 // ---- AUDIO ----
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1467,7 +1467,7 @@ document.addEventListener('mouseup', (e) => {
 
 // Populate MapLv select (1-100)
 const mapLvSelect = document.getElementById('maplv-select');
-for (let i = 1; i <= 100; i++) {
+for (let i = 1; i <= 999; i++) {
   const opt = document.createElement('option');
   opt.value = i;
   opt.textContent = i;
