@@ -696,7 +696,7 @@ function getComputedStats() {
   let atk = (baseAtk + affixTotals.flatAtk) * (1 + affixTotals.pctAtk / 100);
   let splash = baseSplash + affixTotals.flatSplash;
   let cd = baseCd * (1 - affixTotals.pctCd / 100);
-  cd = Math.max(0.05, cd);
+  cd = Math.max(0.15, cd);
 
   atk = atk * state.upgrades.atkMult;
   splash = splash * state.upgrades.splashMult;
@@ -1399,8 +1399,8 @@ function renderInvSection(type, items, listId, pageId, countId, pageKey) {
 // ---- LEVEL UP ----
 const SKILL_POOL = [
   { id: 'atk', name: 'ATK +20%', baseCost: 10, maxLv: 20, apply: () => { state.upgrades.atkMult += 0.2; } },
-  { id: 'cd', name: 'CD -10%', baseCost: 10, maxLv: 15, apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
-  { id: 'splash', name: 'Splash +20%', baseCost: 20, maxLv: 10, apply: () => { state.upgrades.splashMult += 0.2; } },
+  { id: 'cd', name: 'CD -10%', baseCost: 10, maxLv: 5, apply: () => { state.upgrades.cdMult = Math.max(0.5, state.upgrades.cdMult * 0.9); } },
+  { id: 'splash', name: 'Splash +20%', baseCost: 20, maxLv: 5, apply: () => { state.upgrades.splashMult = Math.min(2.0, state.upgrades.splashMult + 0.2); } },
   { id: 'crit', name: 'Crit +10%', baseCost: 15, maxLv: 8, apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
   { id: 'critdmg', name: 'CritDMG +50%', baseCost: 25, maxLv: 10, apply: () => { state.upgrades.critMult += 0.5; } },
   { id: 'credits', name: 'Credits +15%', baseCost: 15, maxLv: 20, apply: () => { state.upgrades.creditMult += 0.15; } },
