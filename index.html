@@ -215,11 +215,11 @@ body {
 }
 .enemy .hitbox {
   position: absolute;
-  top: -4px;
-  left: 50%;
-  width: 20px;
-  height: 20px;
-  transform: translateX(-50%);
+  top: 0px;
+  left: 35px;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
   border: 1px solid rgba(0,255,65,0.25);
   border-radius: 50%;
   pointer-events: none;
@@ -503,8 +503,8 @@ const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, credits: 30, scor
 const RARITIES = ['common','uncommon','rare','epic','legendary','unique'];
 const RARITY_WEIGHTS = [50, 30, 14, 5, 1, 0.1];
 const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, unique: 5 };
-const ATTACK_SHAPES = ['circle', 'line', 'cone', 'nova'];
-const AUTO_MODES = ['nearest', 'chain', 'explode', 'orbit'];
+const ATTACK_SHAPES = ['circle', 'line', 'cone', 'nova', 'pierce-burst', 'lock-on'];
+const AUTO_MODES = ['nearest', 'chain', 'explode', 'orbit', 'parasite', 'drone'];
 const CORE_NAMES = [
   'Ping Flood','Port Scanner','SQL Injector','Buffer Overflow',
   'Zero-Day Exploit','Rootkit Launcher','Worm Deployer','Trojan Horse',
@@ -563,6 +563,8 @@ let state = {
   orbitAngles: [0, 0, 0, 0],
   // Track explode kills per sub
   pendingExplosions: [],
+  infections: [],
+  drones: [],
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -635,7 +637,30 @@ function playSubSound(mode) {
     case 'orbit':
       playNote(392 + Math.random() * 100, 'sine', 0.02, 0.03);
       break;
+    case 'parasite':
+      playNote(110, 'sawtooth', 0.05, 0.15);
+      playNote(117, 'square', 0.04, 0.12);
+      break;
+    case 'drone':
+      playNote(800 + Math.random() * 200, 'sawtooth', 0.02, 0.03);
+      setTimeout(() => playNote(600 + Math.random() * 200, 'sawtooth', 0.015, 0.02), 15);
+      break;
   }
+}
+
+function playPierceBurstSound() {
+  playNote(600, 'square', 0.05, 0.04);
+  setTimeout(() => playNote(750, 'square', 0.05, 0.04), 50);
+  setTimeout(() => playNote(900, 'square', 0.05, 0.04), 100);
+}
+
+function playLockOnMarkSound() {
+  playNote(880, 'sine', 0.04, 0.06);
+}
+
+function playLockOnDetonateSound() {
+  playNote(80, 'sawtooth', 0.08, 0.3);
+  setTimeout(() => playNote(60, 'square', 0.06, 0.25), 40);
 }
 
 // Kill sounds — vary by enemy type
@@ -822,6 +847,7 @@ function spawnEnemy() {
     x, y,
     el: null,
     vx: 0, vy: 0,
+    marked: false,
   };
   const angle = Math.random() * Math.PI * 2;
   enemy.vx = Math.cos(angle) * enemy.speed;
@@ -890,7 +916,7 @@ function updateEnemies(dt) {
     }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
-    e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
+    e.labelEl.textContent = e.marked ? `[!][${e.tag}:${e.hp}]` : `[${e.tag}:${e.hp}]`;
     const hpPct = Math.max(0, e.hp / e.maxHp * 100);
     e.hpFillEl.style.width = hpPct + '%';
   }
@@ -939,6 +965,7 @@ function attack(mx, my) {
   // Each equipped CORE fires its own shape
   const toKill = new Set();
   const damaged = new Set();
+  let lockOnTargets = null;
 
   for (const core of state.equipped.cores) {
     if (!core) continue;
@@ -966,9 +993,36 @@ function attack(mx, my) {
         case 'nova':
           hit = isInNova(ec.x, ec.y, playerX, playerY, splash * 0.5, splash * 2);
           break;
+        case 'pierce-burst':
+          hit = isInLine(ec.x, ec.y, mx, my, clickAngle, 40, splash * 2.5);
+          break;
+        case 'lock-on':
+          hit = isInCircle(ec.x, ec.y, mx, my, splash);
+          break;
       }
 
-      if (hit) {
+      if (hit && shape === 'pierce-burst') {
+        damaged.add(e.id);
+        const allMult = state.upgrades.allDmgMult || 1;
+        const mults = [1.0, 0.6, 0.35];
+        for (let p = 0; p < 3; p++) {
+          setTimeout(() => {
+            if (!state.enemies.includes(e)) return;
+            const isCrit = Math.random() < stats.critChance;
+            const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * allMult * mults[p]);
+            e.hp -= dmg;
+            showDamageNumber(e.x, e.y, dmg, isCrit, false, 'pierce-burst');
+            if (e.hp <= 0) killEnemy(e, false);
+          }, p * 50);
+        }
+      } else if (hit && shape === 'lock-on') {
+        // collect for lock-on marking (max 3)
+        if (!lockOnTargets) lockOnTargets = [];
+        if (lockOnTargets.length < 3) {
+          damaged.add(e.id);
+          lockOnTargets.push({ enemy: e, core });
+        }
+      } else if (hit) {
         damaged.add(e.id);
         const isCrit = Math.random() < stats.critChance;
         const allMult = state.upgrades.allDmgMult || 1;
@@ -978,6 +1032,39 @@ function attack(mx, my) {
         if (e.hp <= 0) toKill.add(e);
       }
     }
+  }
+
+  // Handle lock-on marks
+  if (lockOnTargets && lockOnTargets.length > 0) {
+    playLockOnMarkSound();
+    for (const lt of lockOnTargets) {
+      const e = lt.enemy;
+      if (!state.enemies.includes(e)) continue;
+      e.marked = true;
+      e.labelEl.textContent = `[!][${e.tag}:${e.hp}]`;
+      e.labelEl.style.color = '#ff4444';
+    }
+    setTimeout(() => {
+      playLockOnDetonateSound();
+      const allMult = state.upgrades.allDmgMult || 1;
+      for (const lt of lockOnTargets) {
+        const e = lt.enemy;
+        if (!state.enemies.includes(e)) continue;
+        e.marked = false;
+        e.labelEl.style.color = '';
+        const isCrit = Math.random() < stats.critChance;
+        const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * 1.5 * allMult);
+        e.hp -= dmg;
+        showDamageNumber(e.x, e.y, dmg, isCrit, false, 'lock-on');
+        showAttackEffect(e.x, e.y, 'circle', 40, 0, e.x, e.y);
+        if (e.hp <= 0) killEnemy(e, false);
+      }
+    }, 800);
+  }
+
+  // Handle pierce-burst effect & sound
+  if (state.equipped.cores.some(c => c && c.attackShape === 'pierce-burst')) {
+    playPierceBurstSound();
   }
 
   for (const e of toKill) killEnemy(e, false);
@@ -1022,6 +1109,20 @@ function showAttackEffect(x, y, shape, splash, angle, px, py) {
     case 'line': el.textContent = '---'; break;
     case 'cone': el.textContent = '>>'; break;
     case 'nova': el.textContent = '(*)'; el.style.left = (px - 9) + 'px'; el.style.top = (py - 9) + 'px'; canvas.appendChild(el); setTimeout(() => el.remove(), 400); return;
+    case 'pierce-burst':
+      for (let p = 0; p < 3; p++) {
+        setTimeout(() => {
+          const pe = document.createElement('div');
+          pe.className = 'attack-effect';
+          pe.textContent = '>>>';
+          pe.style.left = (x + Math.cos(angle) * p * 30 - 9) + 'px';
+          pe.style.top = (y + Math.sin(angle) * p * 30 - 9) + 'px';
+          canvas.appendChild(pe);
+          setTimeout(() => pe.remove(), 400);
+        }, p * 50);
+      }
+      return;
+    case 'lock-on': el.textContent = '[!]'; el.style.color = '#ff4444'; break;
   }
   el.style.left = (x - 9) + 'px';
   el.style.top = (y - 9) + 'px';
@@ -1074,6 +1175,9 @@ function updateSubAttacks(dt) {
     state.subCooldowns[i] = Math.max(0, state.subCooldowns[i] - dt);
     const sub = state.equipped.subs[i];
     if (!sub) continue;
+
+    // Drone is continuous (handled separately)
+    if (sub.autoMode === 'drone') continue;
 
     // Orbit is continuous
     if (sub.autoMode === 'orbit') {
@@ -1622,7 +1726,15 @@ document.addEventListener('mousemove', (e) => {
 });
 function updateCrosshair() {
   const stats = getComputedStats();
-  const size = stats.splash * 2;
+  // Show the circle attack range (largest equipped core splash for circle shape)
+  let maxSplash = 0;
+  for (const c of state.equipped.cores) {
+    if (c) {
+      const s = Math.floor(c.splash * state.upgrades.splashMult);
+      if (s > maxSplash) maxSplash = s;
+    }
+  }
+  const size = (maxSplash || stats.splash) * 2;
   crosshairEl.style.width = size + 'px';
   crosshairEl.style.height = size + 'px';
 }
