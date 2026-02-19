@@ -450,6 +450,7 @@ body {
   <div>CRIT: <span id="hud-crit">5</span>% x<span id="hud-critdmg">2.0</span></div>
   <div>KILLS: <span id="hud-kills">0</span></div>
   <div id="hud-synergy"></div>
+  <div id="hud-corruption"></div>
 </div>
 
 <div id="inventory-panel">
@@ -1045,8 +1046,34 @@ function spawnEnemy() {
     berserker: false,
   };
 
-  // Apply mutation to elites
-  if (enemy.elite && Math.random() < 0.6) {
+  // Apply mutation to elites (Corruption: multiple mutations at high MapLv)
+  if (enemy.elite) {
+    const mutChance = 0.6;
+    // Corruption: MapLv 50+ normal enemies also get mutations, elites get 2+
+    const corruptionLv = Math.max(0, Math.floor((state.mapLv - 50) / 10));
+    const maxMutations = Math.min(3, 1 + corruptionLv);
+    const applied = new Set();
+    for (let m = 0; m < maxMutations; m++) {
+      if (m === 0 ? Math.random() < mutChance : Math.random() < 0.3 * corruptionLv) {
+        const available = ELITE_MUTATIONS.filter((_, i) => !applied.has(i));
+        if (available.length === 0) break;
+        const idx = randInt(0, available.length - 1);
+        const mut = available[idx];
+        applied.add(ELITE_MUTATIONS.indexOf(mut));
+        if (m === 0) enemy.mutation = mut; // primary mutation for color
+        enemy.hp = Math.floor(enemy.hp * mut.hpMult);
+        enemy.maxHp = enemy.hp;
+        enemy.speed *= mut.speedMult;
+        enemy.credits = Math.floor(enemy.credits * mut.creditsMult);
+        enemy.tag = mut.tag + '_' + enemy.tag;
+        if (mut.shield) enemy.shield += Math.floor(enemy.maxHp * 0.3);
+        if (mut.splits) enemy.splits = true;
+        if (mut.berserker) enemy.berserker = true;
+      }
+    }
+  }
+  // Corruption: non-elites also get mutations at MapLv 75+
+  if (!enemy.elite && state.mapLv >= 75 && Math.random() < 0.2) {
     const mut = ELITE_MUTATIONS[randInt(0, ELITE_MUTATIONS.length - 1)];
     enemy.mutation = mut;
     enemy.hp = Math.floor(enemy.hp * mut.hpMult);
@@ -2102,6 +2129,15 @@ function updateHUD() {
     }
   }
   synEl.innerHTML = synParts.length > 0 ? 'SYN:' + synParts.join(' ') : '';
+
+  // Corruption indicator
+  const corrEl = document.getElementById('hud-corruption');
+  if (state.mapLv >= 50) {
+    const corrLv = Math.floor((state.mapLv - 50) / 10);
+    corrEl.innerHTML = `<span style="color:#ff0066;">CORRUPTION:${corrLv}</span>`;
+  } else {
+    corrEl.innerHTML = '';
+  }
 
   updateCrosshair();
 }
