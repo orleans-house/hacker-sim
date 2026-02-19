@@ -708,6 +708,9 @@ let state = {
   maxCombo: 0,
   mapKills: 0, // kills at current MapLv
   autoAdvance: false,
+  achievements: {}, // id -> true
+  _forgeCount: 0,
+  _uniqueFound: false,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -1911,6 +1914,7 @@ function pickupDrop(drop) {
   const invKey = getInvKeyForType(drop.item.type);
   if (state.inventories[invKey].length >= MAX_INVENTORY) return;
   playDropSound(drop.item.rarity);
+  if (drop.item.rarity === 'unique') state._uniqueFound = true;
   state.inventories[invKey].push(drop.item);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
@@ -2526,6 +2530,7 @@ function forgeItems(option) {
   const newItem = makeItem(option.nextRarity, avgIlv);
   newItem.archetype = option.archetype; // force archetype match
   state.inventories[invKey].push(newItem);
+  state._forgeCount = (state._forgeCount || 0) + 1;
   playEquipSound();
   showBanner('FORGED: ' + newItem.name);
   termLog('> FORGE: ' + option.nextRarity + ' [iL' + newItem.ilv + '] ' + newItem.name, '#ffaa00');
@@ -2582,6 +2587,39 @@ function updateDpsPanel() {
   document.getElementById('dps-value').textContent = dps;
   document.getElementById('kps-value').textContent = kps;
   document.getElementById('cps-value').textContent = cps;
+}
+
+// ---- ACHIEVEMENTS ----
+const ACHIEVEMENTS = [
+  { id: 'kill100', name: 'First Blood x100', desc: 'Kill 100 enemies', check: () => state.kills >= 100, reward: 50 },
+  { id: 'kill1000', name: 'Massacre', desc: 'Kill 1,000 enemies', check: () => state.kills >= 1000, reward: 500 },
+  { id: 'kill10000', name: 'Genocide Protocol', desc: 'Kill 10,000 enemies', check: () => state.kills >= 10000, reward: 5000 },
+  { id: 'maplv10', name: 'Deep Scan', desc: 'Reach MapLv 10', check: () => state.mapLv >= 10, reward: 100 },
+  { id: 'maplv50', name: 'Core Breach', desc: 'Reach MapLv 50', check: () => state.mapLv >= 50, reward: 1000 },
+  { id: 'maplv100', name: 'Root Access', desc: 'Reach MapLv 100', check: () => state.mapLv >= 100, reward: 10000 },
+  { id: 'combo50', name: 'Chain Reaction', desc: 'Reach 50 combo', check: () => state.maxCombo >= 50, reward: 200 },
+  { id: 'combo100', name: 'Unstoppable', desc: 'Reach 100 combo', check: () => state.maxCombo >= 100, reward: 1000 },
+  { id: 'boss1', name: 'Boss Hunter', desc: 'Defeat a boss', check: () => Object.keys(state.bossSpawned).some(k => state.bossSpawned[k]), reward: 300 },
+  { id: 'forge1', name: 'Blacksmith', desc: 'Forge an item', check: () => state._forgeCount >= 1, reward: 100 },
+  { id: 'unique1', name: 'Jackpot', desc: 'Find a unique item', check: () => state._uniqueFound, reward: 500 },
+  { id: 'full12', name: 'Fully Loaded', desc: 'Fill all 12 equipment slots', check: () => {
+    return [...state.equipped.cores, ...state.equipped.subs, ...state.equipped.modules].every(i => i !== null);
+  }, reward: 200 },
+];
+
+function checkAchievements() {
+  for (const ach of ACHIEVEMENTS) {
+    if (state.achievements[ach.id]) continue;
+    if (ach.check()) {
+      state.achievements[ach.id] = true;
+      state.credits += ach.reward;
+      showBanner('ACHIEVEMENT: ' + ach.name);
+      termLog('> ACHIEVEMENT: ' + ach.name + ' [+' + ach.reward + 'Cr]', '#ffaa00');
+      playNote(523, 'sine', 0.06, 0.1);
+      setTimeout(() => playNote(659, 'sine', 0.06, 0.1), 100);
+      setTimeout(() => playNote(784, 'sine', 0.06, 0.15), 200);
+    }
+  }
 }
 
 // ---- TERMINAL LOG ----
@@ -2658,7 +2696,7 @@ function gameLoop(timestamp) {
   }
 
   dpsUpdateTimer += dt;
-  if (dpsUpdateTimer > 0.5) { dpsUpdateTimer = 0; updateDpsPanel(); }
+  if (dpsUpdateTimer > 0.5) { dpsUpdateTimer = 0; updateDpsPanel(); checkAchievements(); }
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
@@ -2774,6 +2812,9 @@ function saveGame() {
     skillLevels: state.skillLevels,
     autoSellFilter: state.autoSellFilter,
     loadouts: state.loadouts,
+    achievements: state.achievements,
+    _forgeCount: state._forgeCount,
+    _uniqueFound: state._uniqueFound,
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
@@ -2794,6 +2835,9 @@ function loadGame() {
     state.skillLevels = data.skillLevels || {};
     state.autoSellFilter = data.autoSellFilter || { minIlv: 0, minRarity: 'common' };
     state.loadouts = data.loadouts || [];
+    state.achievements = data.achievements || {};
+    state._forgeCount = data._forgeCount || 0;
+    state._uniqueFound = data._uniqueFound || false;
     // Ensure new upgrade fields exist
     if (!state.upgrades.allDmgMult) state.upgrades.allDmgMult = 1;
     if (!state.upgrades.subAtkMult) state.upgrades.subAtkMult = 1;
