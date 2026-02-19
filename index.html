@@ -11,7 +11,7 @@ body {
   color: #00ff41;
   font-family: 'Courier New', monospace;
   overflow: hidden;
-  cursor: crosshair;
+  cursor: none;
   user-select: none;
 }
 #game-canvas {
@@ -60,6 +60,52 @@ body {
   font-size: 13px;
 }
 
+/* Inventory panel (left side) */
+#inventory-panel {
+  position: fixed;
+  top: 50px;
+  left: 10px;
+  width: 230px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: rgba(0,0,0,0.85);
+  border: 1px solid #00ff41;
+  padding: 8px;
+  z-index: 100;
+  font-size: 12px;
+}
+#inventory-panel h3 {
+  color: #ffaa00;
+  font-size: 13px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.inv-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2px 0;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.inv-item:hover { border-color: #00ff41; }
+.inv-item.equipped { border-color: #ffaa00; background: rgba(255,170,0,0.1); }
+.inv-item .inv-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-item .inv-stats { font-size: 10px; color: #888; margin-left: 4px; white-space: nowrap; }
+.inv-item .inv-trash {
+  margin-left: 4px;
+  color: #ff4444;
+  cursor: pointer;
+  font-size: 11px;
+}
+.inv-item .inv-trash:hover { color: #ff8888; }
+.inv-item.common .inv-name { color: #aaa; }
+.inv-item.uncommon .inv-name { color: #00ff41; }
+.inv-item.rare .inv-name { color: #4488ff; }
+.inv-item.epic .inv-name { color: #aa44ff; }
+.inv-item.legendary .inv-name { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
+
 /* Enemies */
 .enemy {
   position: absolute;
@@ -71,6 +117,20 @@ body {
   font-size: 14px;
   font-weight: bold;
   white-space: nowrap;
+}
+.enemy .hitbox {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0,255,65,0.25);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.enemy.elite .hitbox {
+  border-color: rgba(255,170,0,0.3);
 }
 .enemy .hp-bar {
   width: 100%;
@@ -137,37 +197,44 @@ body {
   100% { transform: translateY(0); opacity: 1; }
 }
 
-/* Level up overlay */
-#levelup-overlay {
-  display: none;
+/* Upgrade panel (right side) */
+#upgrade-panel {
   position: fixed;
-  inset: 0;
+  top: 50px;
+  right: 10px;
+  width: 220px;
   background: rgba(0,0,0,0.85);
-  z-index: 200;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-#levelup-overlay.active { display: flex; }
-#levelup-overlay h2 {
-  color: #ffaa00;
-  font-size: 28px;
-  margin-bottom: 20px;
-}
-.skill-choice {
   border: 1px solid #00ff41;
-  padding: 12px 20px;
-  margin: 6px;
-  cursor: pointer;
-  width: 320px;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
+  padding: 8px;
+  z-index: 100;
+  font-size: 12px;
+}
+#upgrade-panel h3 {
+  color: #ffaa00;
+  font-size: 13px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.upgrade-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 3px 0;
+  padding: 3px 4px;
+}
+.upgrade-btn {
+  background: none;
+  border: 1px solid #00ff41;
   color: #00ff41;
-  background: rgba(0,255,65,0.05);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.skill-choice:hover {
-  background: rgba(0,255,65,0.2);
-}
+.upgrade-btn:hover { background: rgba(0,255,65,0.2); }
+.upgrade-btn:disabled { color: #555; border-color: #555; cursor: default; }
+.upgrade-btn:disabled:hover { background: none; }
 
 /* Game over / Victory */
 #result-overlay {
@@ -194,6 +261,26 @@ body {
 }
 #result-overlay button:hover { background: rgba(0,255,65,0.2); }
 
+/* Crosshair + splash range indicator */
+#crosshair {
+  position: fixed;
+  border: 1px solid rgba(0,255,65,0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 90;
+  transform: translate(-50%, -50%);
+}
+#crosshair::after {
+  content: '+';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #00ff41;
+  font-size: 16px;
+  font-weight: bold;
+}
+
 /* Wave banner */
 #wave-banner {
   position: fixed;
@@ -213,7 +300,7 @@ body {
 <div id="hud">
   <div>HACK.SIM</div>
   <div>WAVE: <span id="hud-wave">1</span></div>
-  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span></div>
+  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span> | SP: <span id="hud-sp-top">0</span></div>
   <div>TRACE: <span id="hud-trace-pct">0</span>%
     <div class="trace-bar" id="trace-bar"><div class="trace-fill" id="trace-fill"></div></div>
   </div>
@@ -222,17 +309,23 @@ body {
 
 <div id="bottom-hud">
   <div>EQUIP: <span id="hud-weapon">Ping Flood [Common]</span></div>
-  <div>ATK: <span id="hud-atk">10</span> | RANGE: <span id="hud-range">60</span> | CD: <span id="hud-cd">0.5</span>s</div>
+  <div>ATK: <span id="hud-atk">10</span> | SPLASH: <span id="hud-splash">30</span> | CD: <span id="hud-cd">0.5</span>s</div>
   <div>KILLS: <span id="hud-kills">0</span></div>
 </div>
 
+<div id="inventory-panel">
+  <h3>INVENTORY [<span id="inv-count">0</span>/20]</h3>
+  <div id="inv-list"></div>
+</div>
+
 <div id="game-canvas"></div>
+<div id="crosshair"></div>
 
 <div id="wave-banner"></div>
 
-<div id="levelup-overlay">
-  <h2>// LEVEL UP — SELECT UPGRADE //</h2>
-  <div id="skill-choices"></div>
+<div id="upgrade-panel">
+  <h3>UPGRADES [SP: <span id="hud-sp">0</span>]</h3>
+  <div id="upgrade-list"></div>
 </div>
 
 <div id="result-overlay">
@@ -277,11 +370,15 @@ let state = {
   trace: 0,
   enemies: [],
   drops: [],
-  weapon: { name: 'Ping Flood', rarity: 'common', atk: 10, range: 60, cd: 0.5, bonuses: [] },
+  weapon: { id: 0, name: 'Ping Flood', rarity: 'common', atk: 10, splash: 50, cd: 0.5 },
   cooldown: 0,
   mouseX: 0,
   mouseY: 0,
-  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, aoe: 0, critChance: 0.05, critMult: 2 },
+  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, splashMult: 1, critChance: 0.05, critMult: 2 },
+  sp: 0,
+  skillLevels: {},
+  inventory: [],
+  maxInventory: 20,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -299,6 +396,7 @@ function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
 
 // ---- ENEMY MANAGEMENT ----
 function spawnEnemy() {
+  if (!state.running) return;
   const isElite = state.wave > 1 && Math.random() < 0.05 + state.wave * 0.01;
   const template = isElite ? ELITE_TYPE : ENEMY_TYPES[randInt(0, ENEMY_TYPES.length - 1)];
   const scaledHp = Math.floor(template.baseHp * (1 + (state.wave - 1) * 0.4));
@@ -332,11 +430,13 @@ function spawnEnemy() {
 
   const el = document.createElement('div');
   el.className = 'enemy' + (enemy.elite ? ' elite' : '');
-  el.innerHTML = `<div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+  el.innerHTML = `<div class="hitbox"></div><div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   canvas.appendChild(el);
   enemy.el = el;
+  enemy.labelEl = el.querySelector('.label');
+  enemy.hpFillEl = el.querySelector('.hp-fill');
   state.enemies.push(enemy);
 }
 
@@ -365,9 +465,9 @@ function updateEnemies(dt) {
     // Update DOM
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
-    e.el.querySelector('.label').textContent = `[${e.tag}:${e.hp}]`;
+    e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
     const hpPct = Math.max(0, e.hp / e.maxHp * 100);
-    e.el.querySelector('.hp-fill').style.width = hpPct + '%';
+    e.hpFillEl.style.width = hpPct + '%';
   }
 }
 
@@ -376,31 +476,26 @@ function attack(mx, my) {
   if (state.cooldown > 0 || state.paused) return;
   const w = state.weapon;
   const atkPower = Math.floor(w.atk * state.upgrades.atkMult);
-  const range = w.range * state.upgrades.rangeMult;
-  const aoe = state.upgrades.aoe;
+  const splash = (w.splash || 30) * state.upgrades.splashMult;
 
   // Show click effect
   showAttackEffect(mx, my);
 
-  // Find enemies in range
-  let targets = [];
+  // Hit ALL enemies within splash radius of click point (use center of enemy label)
+  const toKill = [];
   for (const e of state.enemies) {
-    const d = dist(mx, my, e.x, e.y);
-    if (d <= range) targets.push({ enemy: e, dist: d });
-  }
-  targets.sort((a, b) => a.dist - b.dist);
-  if (aoe === 0) targets = targets.slice(0, 1);
-  else targets = targets.slice(0, 1 + aoe);
-
-  for (const t of targets) {
-    const isCrit = Math.random() < state.upgrades.critChance;
-    const dmg = isCrit ? Math.floor(atkPower * state.upgrades.critMult) : atkPower;
-    t.enemy.hp -= dmg;
-    showDamageNumber(t.enemy.x, t.enemy.y, dmg, isCrit);
-    if (t.enemy.hp <= 0) {
-      killEnemy(t.enemy);
+    const ex = e.x + 35; // approx half-width of label
+    const ey = e.y + 10; // approx half-height
+    const d = dist(mx, my, ex, ey);
+    if (d <= splash) {
+      const isCrit = Math.random() < state.upgrades.critChance;
+      const dmg = isCrit ? Math.floor(atkPower * state.upgrades.critMult) : atkPower;
+      e.hp -= dmg;
+      showDamageNumber(e.x, e.y, dmg, isCrit);
+      if (e.hp <= 0) toKill.push(e);
     }
   }
+  for (const e of toKill) killEnemy(e);
 
   state.cooldown = w.cd * state.upgrades.cdMult;
 }
@@ -440,46 +535,82 @@ function showDamageNumber(x, y, dmg, crit) {
 }
 
 // ---- DROPS ----
-function spawnDrop(x, y, guaranteed) {
-  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
+function makeWeapon(rarity, wave) {
   const rarityIdx = RARITIES.indexOf(rarity);
   const baseName = WEAPON_NAMES[randInt(0, WEAPON_NAMES.length - 1)];
-  const baseAtk = 8 + rarityIdx * 6 + randInt(0, 4 + state.wave);
-  const baseRange = 50 + rarityIdx * 15 + randInt(0, 10);
-  const baseCd = Math.max(0.15, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05));
-
-  const drop = {
+  return {
     id: Date.now() + Math.random(),
-    x: x + rand(-20, 20),
-    y: y + rand(-10, 10),
     name: baseName,
     rarity,
-    atk: baseAtk,
-    range: baseRange,
-    cd: Math.round(baseCd * 100) / 100,
+    atk: 8 + rarityIdx * 6 + randInt(0, 4 + wave),
+    splash: 45 + rarityIdx * 15 + randInt(0, 10),
+    cd: Math.round(Math.max(0.15, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) * 100) / 100,
+  };
+}
+
+function spawnDrop(x, y, guaranteed) {
+  if (state.inventory.length >= state.maxInventory) return; // inventory full
+  const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
+  const weapon = makeWeapon(rarity, state.wave);
+
+  const drop = {
+    id: weapon.id,
+    x: x + rand(-20, 20),
+    y: y + rand(-10, 10),
+    weapon,
     ttl: 10,
     el: null,
   };
 
   const el = document.createElement('div');
   el.className = 'drop ' + rarity;
-  el.textContent = `[${baseName}]`;
+  el.textContent = `[${weapon.name}]`;
   el.style.left = drop.x + 'px';
   el.style.top = drop.y + 'px';
   el.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    equipDrop(drop);
+    pickupDrop(drop);
   });
   canvas.appendChild(el);
   drop.el = el;
   state.drops.push(drop);
 }
 
-function equipDrop(drop) {
-  state.weapon = { name: drop.name, rarity: drop.rarity, atk: drop.atk, range: drop.range, cd: drop.cd };
+function pickupDrop(drop) {
+  if (state.inventory.length >= state.maxInventory) return;
+  state.inventory.push(drop.weapon);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
+  renderInventory();
+}
+
+function equipWeapon(weapon) {
+  // Swap current weapon into inventory, equip new one
+  const old = { ...state.weapon };
+  state.weapon = { name: weapon.name, rarity: weapon.rarity, atk: weapon.atk, splash: weapon.splash, cd: weapon.cd };
+  state.inventory = state.inventory.filter(w => w.id !== weapon.id);
+  state.inventory.push(old);
+  renderInventory();
   updateHUD();
+}
+
+function trashWeapon(weapon) {
+  state.inventory = state.inventory.filter(w => w.id !== weapon.id);
+  renderInventory();
+}
+
+function renderInventory() {
+  const container = document.getElementById('inv-list');
+  document.getElementById('inv-count').textContent = state.inventory.length;
+  container.innerHTML = '';
+  for (const w of state.inventory) {
+    const row = document.createElement('div');
+    row.className = 'inv-item ' + w.rarity;
+    row.innerHTML = `<span class="inv-name">${w.name}</span><span class="inv-stats">A${w.atk} S${w.splash} C${w.cd}</span><span class="inv-trash">✕</span>`;
+    row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipWeapon(w); });
+    row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashWeapon(w); });
+    container.appendChild(row);
+  }
 }
 
 function updateDrops(dt) {
@@ -494,46 +625,54 @@ function updateDrops(dt) {
   }
 }
 
-// ---- LEVEL UP ----
+// ---- LEVEL UP (Skill Point System) ----
 function checkLevelUp() {
   while (state.xp >= state.xpToNext) {
     state.xp -= state.xpToNext;
     state.level++;
+    state.sp++;
     state.xpToNext = Math.floor(state.xpToNext * 1.5);
-    showLevelUp();
   }
+  renderUpgradePanel();
 }
 
 const SKILL_POOL = [
-  { name: '+20% ATK', apply: () => { state.upgrades.atkMult += 0.2; } },
-  { name: '+20% Range', apply: () => { state.upgrades.rangeMult += 0.2; } },
-  { name: '-15% Cooldown', apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult - 0.15); } },
-  { name: '+1 AoE Target', apply: () => { state.upgrades.aoe += 1; } },
-  { name: '+10% Crit Chance', apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
-  { name: '+50% Crit Damage', apply: () => { state.upgrades.critMult += 0.5; } },
-  { name: '-0.5%/s Trace Rate', apply: () => { state.upgrades.traceReduce += 0.5; } },
+  { id: 'atk', name: 'ATK +20%', cost: 1, maxLv: 10, apply: () => { state.upgrades.atkMult += 0.2; } },
+  { id: 'cd', name: 'CD -10%', cost: 1, maxLv: 8, apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
+  { id: 'splash', name: 'Splash +20%', cost: 2, maxLv: 5, apply: () => { state.upgrades.splashMult += 0.2; } },
+  { id: 'crit', name: 'Crit +10%', cost: 1, maxLv: 6, apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
+  { id: 'critdmg', name: 'CritDMG +50%', cost: 2, maxLv: 5, apply: () => { state.upgrades.critMult += 0.5; } },
+  { id: 'trace', name: 'Trace -10%', cost: 2, maxLv: 5, apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
 ];
 
-function showLevelUp() {
-  state.paused = true;
-  const overlay = document.getElementById('levelup-overlay');
-  const container = document.getElementById('skill-choices');
+function renderUpgradePanel() {
+  const container = document.getElementById('upgrade-list');
+  const spEl = document.getElementById('hud-sp');
+  spEl.textContent = state.sp;
   container.innerHTML = '';
-  // Pick 3 random skills
-  const shuffled = [...SKILL_POOL].sort(() => Math.random() - 0.5).slice(0, 3);
-  for (const skill of shuffled) {
-    const btn = document.createElement('div');
-    btn.className = 'skill-choice';
-    btn.textContent = '> ' + skill.name;
-    btn.addEventListener('click', () => {
-      skill.apply();
-      overlay.classList.remove('active');
-      state.paused = false;
-      updateHUD();
+  for (const skill of SKILL_POOL) {
+    const lv = state.skillLevels[skill.id] || 0;
+    const canBuy = state.sp >= skill.cost && lv < skill.maxLv;
+    const row = document.createElement('div');
+    row.className = 'upgrade-row';
+    row.innerHTML = `<span>${skill.name} (${lv}/${skill.maxLv})</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-btn';
+    btn.textContent = `[${skill.cost}SP]`;
+    btn.disabled = !canBuy;
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (state.sp >= skill.cost && (state.skillLevels[skill.id] || 0) < skill.maxLv) {
+        state.sp -= skill.cost;
+        state.skillLevels[skill.id] = (state.skillLevels[skill.id] || 0) + 1;
+        skill.apply();
+        renderUpgradePanel();
+        updateHUD();
+      }
     });
-    container.appendChild(btn);
+    row.appendChild(btn);
+    container.appendChild(row);
   }
-  overlay.classList.add('active');
 }
 
 // ---- WAVES ----
@@ -563,6 +702,7 @@ function updateHUD() {
   document.getElementById('hud-xp-max').textContent = state.xpToNext;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
+  document.getElementById('hud-sp-top').textContent = state.sp;
   const tracePct = Math.min(100, Math.floor(state.trace));
   document.getElementById('hud-trace-pct').textContent = tracePct;
   document.getElementById('trace-fill').style.width = tracePct + '%';
@@ -571,8 +711,9 @@ function updateHUD() {
   const w = state.weapon;
   document.getElementById('hud-weapon').textContent = `${w.name} [${w.rarity.charAt(0).toUpperCase() + w.rarity.slice(1)}]`;
   document.getElementById('hud-atk').textContent = Math.floor(w.atk * state.upgrades.atkMult);
-  document.getElementById('hud-range').textContent = Math.floor(w.range * state.upgrades.rangeMult);
+  document.getElementById('hud-splash').textContent = Math.floor((w.splash || 30) * state.upgrades.splashMult);
   document.getElementById('hud-cd').textContent = (w.cd * state.upgrades.cdMult).toFixed(2);
+  updateCrosshair();
 }
 
 // ---- GAME OVER / WIN ----
@@ -596,7 +737,7 @@ function gameLoop(timestamp) {
 
   if (!state.paused) {
     // Trace
-    const traceRate = Math.max(0, TRACE_PER_SEC + state.wave * 0.05 - state.upgrades.traceReduce);
+    const traceRate = Math.max(0.15, (TRACE_PER_SEC + state.wave * 0.05) * (1 - state.upgrades.traceReduce));
     state.trace += traceRate * dt;
     if (state.trace >= 100) {
       showResult(false);
@@ -605,6 +746,13 @@ function gameLoop(timestamp) {
 
     // Cooldown
     if (state.cooldown > 0) state.cooldown = Math.max(0, state.cooldown - dt);
+
+    // Auto-attack while holding mouse (all attack logic goes through here)
+    if (mouseDown && state.cooldown <= 0) {
+      if (state.mouseY >= CANVAS_PAD_TOP && state.mouseY <= window.innerHeight - CANVAS_PAD_BOT) {
+        attack(state.mouseX, state.mouseY);
+      }
+    }
 
     // Spawn remaining enemies in wave
     state.waveTimer += dt;
@@ -633,13 +781,26 @@ function gameLoop(timestamp) {
 }
 
 // ---- INPUT ----
+let mouseDown = false;
+const crosshairEl = document.getElementById('crosshair');
 document.addEventListener('mousemove', (e) => {
   state.mouseX = e.clientX;
   state.mouseY = e.clientY;
+  crosshairEl.style.left = e.clientX + 'px';
+  crosshairEl.style.top = e.clientY + 'px';
 });
-document.addEventListener('click', (e) => {
-  if (!state.running || state.paused) return;
-  attack(e.clientX, e.clientY);
+function updateCrosshair() {
+  const splash = (state.weapon.splash || 30) * state.upgrades.splashMult;
+  const size = splash * 2;
+  crosshairEl.style.width = size + 'px';
+  crosshairEl.style.height = size + 'px';
+}
+document.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  mouseDown = true;
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) mouseDown = false;
 });
 
 // ---- START ----
@@ -647,6 +808,8 @@ function init() {
   state.running = true;
   lastTime = performance.now();
   startWave();
+  renderUpgradePanel();
+  renderInventory();
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
