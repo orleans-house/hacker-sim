@@ -555,30 +555,102 @@ function getScoreXpMult() { return Math.pow(1.06, state.mapLv - 1); }
 
 // ---- AUDIO ----
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playHitSound(crit) {
+// Pentatonic scale for musical hits
+const PENTA = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3];
+let noteIdx = 0;
+
+function playNote(freq, type, vol, dur) {
+  const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.connect(gain);
   gain.connect(audioCtx.destination);
-  osc.type = 'square';
-  osc.frequency.value = crit ? 800 : 400;
-  gain.gain.value = 0.08;
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (crit ? 0.15 : 0.08));
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + (crit ? 0.15 : 0.08));
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.value = vol;
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t);
+  osc.stop(t + dur);
 }
-function playKillSound() {
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = 'sawtooth';
-  osc.frequency.value = 200;
-  osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
-  gain.gain.value = 0.06;
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.2);
+
+// CORE attack sounds — different per shape
+function playHitSound(crit, shape) {
+  const base = PENTA[noteIdx % PENTA.length];
+  noteIdx++;
+  const freq = crit ? base * 2 : base;
+  const vol = crit ? 0.1 : 0.06;
+  switch (shape) {
+    case 'line':
+      playNote(freq, 'sawtooth', vol, 0.06);
+      setTimeout(() => playNote(freq * 1.5, 'sawtooth', vol * 0.5, 0.04), 30);
+      break;
+    case 'cone':
+      playNote(freq * 0.8, 'triangle', vol, 0.1);
+      break;
+    case 'nova':
+      playNote(freq * 0.5, 'sine', vol, 0.15);
+      setTimeout(() => playNote(freq, 'sine', vol * 0.6, 0.1), 50);
+      break;
+    default: // circle
+      playNote(freq, 'square', vol, 0.07);
+      break;
+  }
+}
+
+// SUB auto-attack sounds
+function playSubSound(mode) {
+  switch (mode) {
+    case 'nearest':
+      playNote(523, 'sine', 0.04, 0.05);
+      break;
+    case 'chain':
+      playNote(440, 'triangle', 0.03, 0.04);
+      setTimeout(() => playNote(554, 'triangle', 0.025, 0.04), 40);
+      setTimeout(() => playNote(659, 'triangle', 0.02, 0.04), 80);
+      break;
+    case 'explode':
+      playNote(110, 'sawtooth', 0.06, 0.2);
+      setTimeout(() => playNote(80, 'square', 0.04, 0.15), 50);
+      break;
+    case 'orbit':
+      playNote(392 + Math.random() * 100, 'sine', 0.02, 0.03);
+      break;
+  }
+}
+
+// Kill sounds — vary by enemy type
+function playKillSound(tag) {
+  const t = audioCtx.currentTime;
+  switch (tag) {
+    case 'MAINFRAME':
+      playNote(150, 'sawtooth', 0.08, 0.3);
+      setTimeout(() => playNote(100, 'square', 0.06, 0.2), 80);
+      setTimeout(() => playNote(60, 'sawtooth', 0.05, 0.25), 160);
+      break;
+    case 'FW':
+    case 'DB':
+      playNote(180, 'sawtooth', 0.06, 0.2);
+      setTimeout(() => playNote(90, 'sawtooth', 0.04, 0.15), 60);
+      break;
+    default:
+      playNote(200 + Math.random() * 100, 'sawtooth', 0.05, 0.12);
+      break;
+  }
+}
+
+// Drop pickup
+function playDropSound(rarity) {
+  const rarityFreqs = { common: 440, uncommon: 523, rare: 587, epic: 659, legendary: 784, unique: 880 };
+  const freq = rarityFreqs[rarity] || 440;
+  playNote(freq, 'sine', 0.06, 0.08);
+  setTimeout(() => playNote(freq * 1.5, 'sine', 0.04, 0.1), 60);
+}
+
+// Equip sound
+function playEquipSound() {
+  playNote(523, 'square', 0.05, 0.05);
+  setTimeout(() => playNote(659, 'square', 0.05, 0.05), 50);
+  setTimeout(() => playNote(784, 'square', 0.05, 0.08), 100);
 }
 
 // ---- UTILITIES ----
@@ -881,7 +953,7 @@ function attack(mx, my) {
         const isCrit = Math.random() < stats.critChance;
         const dmg = isCrit ? Math.floor(stats.atk * stats.critDmg) : stats.atk;
         e.hp -= dmg;
-        showDamageNumber(e.x, e.y, dmg, isCrit);
+        showDamageNumber(e.x, e.y, dmg, isCrit, false, core.attackShape);
         if (e.hp <= 0) toKill.add(e);
       }
     }
@@ -892,7 +964,7 @@ function attack(mx, my) {
 }
 
 function killEnemy(enemy, fromSub) {
-  playKillSound();
+  playKillSound(enemy.tag);
   const mult = getScoreXpMult();
   const computed = getComputedStats();
   const creditMult = state.upgrades.creditMult * (1 + computed.xpBonus);
@@ -936,7 +1008,7 @@ function showAttackEffect(x, y, shape, splash, angle, px, py) {
   setTimeout(() => el.remove(), 400);
 }
 
-function showDamageNumber(x, y, dmg, crit, isSub) {
+function showDamageNumber(x, y, dmg, crit, isSub, shape, subMode) {
   const el = document.createElement('div');
   el.className = 'damage-number' + (crit ? ' crit' : '') + (isSub ? ' sub-dmg' : '');
   el.textContent = (crit ? 'CRIT ' : '') + dmg;
@@ -944,7 +1016,8 @@ function showDamageNumber(x, y, dmg, crit, isSub) {
   el.style.top = (y - 10) + 'px';
   canvas.appendChild(el);
   setTimeout(() => el.remove(), 800);
-  if (!isSub) playHitSound(crit);
+  if (!isSub) playHitSound(crit, shape);
+  else if (subMode) playSubSound(subMode);
 }
 
 function showSubEffect(x, y, symbol) {
@@ -993,7 +1066,7 @@ function updateSubAttacks(dt) {
         if (dist(ec.x, ec.y, ox, oy) < 40) {
           const dmg = Math.max(1, Math.floor(dps * dt));
           e.hp -= dmg;
-          if (Math.random() < 0.1) showDamageNumber(e.x, e.y, dmg, false, true);
+          if (Math.random() < 0.1) showDamageNumber(e.x, e.y, dmg, false, true, null, 'orbit');
           if (e.hp <= 0) {
             killEnemy(e, true);
             break;
@@ -1023,8 +1096,8 @@ function updateSubAttacks(dt) {
         const isCrit = Math.random() < stats.critChance;
         const dmg = isCrit ? Math.floor(sub.atk * stats.critDmg) : sub.atk;
         nearest.hp -= dmg;
-        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true);
-        showSubEffect(ec.x, ec.y, '⚡');
+        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
+        showSubEffect(ec.x, ec.y, '>');
         if (nearest.hp <= 0) killEnemy(nearest, true);
         break;
       }
@@ -1038,8 +1111,8 @@ function updateSubAttacks(dt) {
           const isCrit = Math.random() < stats.critChance;
           const dmg = isCrit ? Math.floor(chainDmg * stats.critDmg) : Math.floor(chainDmg);
           target.hp -= dmg;
-          showDamageNumber(target.x, target.y, dmg, isCrit, true);
-          showSubEffect(ec.x, ec.y, '⚡');
+          showDamageNumber(target.x, target.y, dmg, isCrit, true, null, 'chain');
+          showSubEffect(ec.x, ec.y, '>');
 
           const prevEc = ec;
           if (target.hp <= 0) { killEnemy(target, true); }
@@ -1067,8 +1140,8 @@ function updateSubAttacks(dt) {
         const isCrit = Math.random() < stats.critChance;
         const dmg = isCrit ? Math.floor(sub.atk * stats.critDmg) : sub.atk;
         nearest.hp -= dmg;
-        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true);
-        showSubEffect(ec.x, ec.y, '💥');
+        showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
+        showSubEffect(ec.x, ec.y, '#');
         if (nearest.hp <= 0) killEnemy(nearest, false); // false to allow explode
         break;
       }
@@ -1083,7 +1156,7 @@ function updateSubAttacks(dt) {
       const ec = getEnemyCenter(e);
       if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
         e.hp -= explosionDmg;
-        showDamageNumber(e.x, e.y, explosionDmg, false, true);
+        showDamageNumber(e.x, e.y, explosionDmg, false, true, null, 'explode');
         if (e.hp <= 0) killEnemy(e, true);
       }
     }
@@ -1130,6 +1203,7 @@ function spawnDrop(x, y, guaranteed) {
 function pickupDrop(drop) {
   const invKey = getInvKeyForType(drop.item.type);
   if (state.inventories[invKey].length >= MAX_INVENTORY) return;
+  playDropSound(drop.item.rarity);
   state.inventories[invKey].push(drop.item);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
@@ -1166,10 +1240,12 @@ function equipItem(item) {
   const slots = getSlotsForType(item.type);
   const emptyIdx = slots.indexOf(null);
   if (emptyIdx === -1) {
+    playNote(200, 'square', 0.06, 0.1);
     showBanner('NO EMPTY ' + item.type.toUpperCase() + ' SLOT');
     return;
   }
   slots[emptyIdx] = item;
+  playEquipSound();
   const invKey = getInvKeyForType(item.type);
   state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
   renderInventory();
