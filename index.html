@@ -137,37 +137,44 @@ body {
   100% { transform: translateY(0); opacity: 1; }
 }
 
-/* Level up overlay */
-#levelup-overlay {
-  display: none;
+/* Upgrade panel (right side) */
+#upgrade-panel {
   position: fixed;
-  inset: 0;
+  top: 50px;
+  right: 10px;
+  width: 220px;
   background: rgba(0,0,0,0.85);
-  z-index: 200;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-#levelup-overlay.active { display: flex; }
-#levelup-overlay h2 {
-  color: #ffaa00;
-  font-size: 28px;
-  margin-bottom: 20px;
-}
-.skill-choice {
   border: 1px solid #00ff41;
-  padding: 12px 20px;
-  margin: 6px;
-  cursor: pointer;
-  width: 320px;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
+  padding: 8px;
+  z-index: 100;
+  font-size: 12px;
+}
+#upgrade-panel h3 {
+  color: #ffaa00;
+  font-size: 13px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.upgrade-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 3px 0;
+  padding: 3px 4px;
+}
+.upgrade-btn {
+  background: none;
+  border: 1px solid #00ff41;
   color: #00ff41;
-  background: rgba(0,255,65,0.05);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.skill-choice:hover {
-  background: rgba(0,255,65,0.2);
-}
+.upgrade-btn:hover { background: rgba(0,255,65,0.2); }
+.upgrade-btn:disabled { color: #555; border-color: #555; cursor: default; }
+.upgrade-btn:disabled:hover { background: none; }
 
 /* Game over / Victory */
 #result-overlay {
@@ -213,7 +220,7 @@ body {
 <div id="hud">
   <div>HACK.SIM</div>
   <div>WAVE: <span id="hud-wave">1</span></div>
-  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span></div>
+  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span> | SP: <span id="hud-sp-top">0</span></div>
   <div>TRACE: <span id="hud-trace-pct">0</span>%
     <div class="trace-bar" id="trace-bar"><div class="trace-fill" id="trace-fill"></div></div>
   </div>
@@ -230,9 +237,9 @@ body {
 
 <div id="wave-banner"></div>
 
-<div id="levelup-overlay">
-  <h2>// LEVEL UP — SELECT UPGRADE //</h2>
-  <div id="skill-choices"></div>
+<div id="upgrade-panel">
+  <h3>UPGRADES [SP: <span id="hud-sp">0</span>]</h3>
+  <div id="upgrade-list"></div>
 </div>
 
 <div id="result-overlay">
@@ -282,6 +289,8 @@ let state = {
   mouseX: 0,
   mouseY: 0,
   upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, aoe: 0, critChance: 0.05, critMult: 2 },
+  sp: 0,
+  skillLevels: {},
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -497,46 +506,55 @@ function updateDrops(dt) {
   }
 }
 
-// ---- LEVEL UP ----
+// ---- LEVEL UP (Skill Point System) ----
 function checkLevelUp() {
   while (state.xp >= state.xpToNext) {
     state.xp -= state.xpToNext;
     state.level++;
+    state.sp++;
     state.xpToNext = Math.floor(state.xpToNext * 1.5);
-    showLevelUp();
   }
+  renderUpgradePanel();
 }
 
 const SKILL_POOL = [
-  { name: '+20% ATK', apply: () => { state.upgrades.atkMult += 0.2; } },
-  { name: '+20% Range', apply: () => { state.upgrades.rangeMult += 0.2; } },
-  { name: '-10% Cooldown', apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
-  { name: '+1 AoE Target', apply: () => { state.upgrades.aoe += 1; } },
-  { name: '+10% Crit Chance', apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
-  { name: '+50% Crit Damage', apply: () => { state.upgrades.critMult += 0.5; } },
-  { name: '-10% Trace Rate', apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
+  { id: 'atk', name: 'ATK +20%', cost: 1, maxLv: 10, apply: () => { state.upgrades.atkMult += 0.2; } },
+  { id: 'range', name: 'Range +20%', cost: 1, maxLv: 8, apply: () => { state.upgrades.rangeMult += 0.2; } },
+  { id: 'cd', name: 'CD -10%', cost: 1, maxLv: 8, apply: () => { state.upgrades.cdMult = Math.max(0.1, state.upgrades.cdMult * 0.9); } },
+  { id: 'aoe', name: 'AoE +1', cost: 2, maxLv: 5, apply: () => { state.upgrades.aoe += 1; } },
+  { id: 'crit', name: 'Crit +10%', cost: 1, maxLv: 6, apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
+  { id: 'critdmg', name: 'CritDMG +50%', cost: 2, maxLv: 5, apply: () => { state.upgrades.critMult += 0.5; } },
+  { id: 'trace', name: 'Trace -10%', cost: 2, maxLv: 5, apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
 ];
 
-function showLevelUp() {
-  state.paused = true;
-  const overlay = document.getElementById('levelup-overlay');
-  const container = document.getElementById('skill-choices');
+function renderUpgradePanel() {
+  const container = document.getElementById('upgrade-list');
+  const spEl = document.getElementById('hud-sp');
+  spEl.textContent = state.sp;
   container.innerHTML = '';
-  // Pick 3 random skills
-  const shuffled = [...SKILL_POOL].sort(() => Math.random() - 0.5).slice(0, 3);
-  for (const skill of shuffled) {
-    const btn = document.createElement('div');
-    btn.className = 'skill-choice';
-    btn.textContent = '> ' + skill.name;
-    btn.addEventListener('click', () => {
-      skill.apply();
-      overlay.classList.remove('active');
-      state.paused = false;
-      updateHUD();
+  for (const skill of SKILL_POOL) {
+    const lv = state.skillLevels[skill.id] || 0;
+    const canBuy = state.sp >= skill.cost && lv < skill.maxLv;
+    const row = document.createElement('div');
+    row.className = 'upgrade-row';
+    row.innerHTML = `<span>${skill.name} (${lv}/${skill.maxLv})</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-btn';
+    btn.textContent = `[${skill.cost}SP]`;
+    btn.disabled = !canBuy;
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (state.sp >= skill.cost && (state.skillLevels[skill.id] || 0) < skill.maxLv) {
+        state.sp -= skill.cost;
+        state.skillLevels[skill.id] = (state.skillLevels[skill.id] || 0) + 1;
+        skill.apply();
+        renderUpgradePanel();
+        updateHUD();
+      }
     });
-    container.appendChild(btn);
+    row.appendChild(btn);
+    container.appendChild(row);
   }
-  overlay.classList.add('active');
 }
 
 // ---- WAVES ----
@@ -566,6 +584,7 @@ function updateHUD() {
   document.getElementById('hud-xp-max').textContent = state.xpToNext;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
+  document.getElementById('hud-sp-top').textContent = state.sp;
   const tracePct = Math.min(100, Math.floor(state.trace));
   document.getElementById('hud-trace-pct').textContent = tracePct;
   document.getElementById('trace-fill').style.width = tracePct + '%';
@@ -662,6 +681,7 @@ function init() {
   state.running = true;
   lastTime = performance.now();
   startWave();
+  renderUpgradePanel();
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
