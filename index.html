@@ -1072,6 +1072,8 @@ function attack(mx, my) {
 }
 
 function killEnemy(enemy, fromSub) {
+  // Remove infections on this enemy (propagation handled in updateInfections)
+  state.infections = state.infections.filter(inf => inf.enemyId !== enemy.id);
   playKillSound(enemy.tag);
   const mult = getScoreXpMult();
   const computed = getComputedStats();
@@ -1271,6 +1273,36 @@ function updateSubAttacks(dt) {
         if (nearest.hp <= 0) killEnemy(nearest, false); // false to allow explode
         break;
       }
+      case 'parasite': {
+        // Infect nearest enemy if not already at max infections for this sub
+        const myInfections = state.infections.filter(inf => inf.subIdx === i);
+        if (myInfections.length < 3) {
+          const alreadyInfected = new Set(state.infections.map(inf => inf.enemyId));
+          // prefer uninfected nearest
+          let target = null, tDist = Infinity;
+          for (const e of state.enemies) {
+            if (alreadyInfected.has(e.id)) continue;
+            const ec = getEnemyCenter(e);
+            const d = dist(ec.x, ec.y, mx, my);
+            if (d < tDist) { tDist = d; target = e; }
+          }
+          if (!target) { // fallback to nearest
+            for (const e of state.enemies) {
+              const ec = getEnemyCenter(e);
+              const d = dist(ec.x, ec.y, mx, my);
+              if (d < tDist) { tDist = d; target = e; }
+            }
+          }
+          if (target) {
+            const dmgPerSec = sub.atk * 0.3 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+            state.infections.push({ enemyId: target.id, subIdx: i, dmgPerSec, ttl: 5 });
+            playSubSound('parasite');
+            const ec = getEnemyCenter(target);
+            showSubEffect(ec.x, ec.y, '☣');
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -1397,6 +1429,7 @@ function equipItem(item) {
   playEquipSound();
   const invKey = getInvKeyForType(item.type);
   state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
+  if (item.type === 'sub') rebuildDrones();
   renderInventory();
   updateHUD();
 }
@@ -1412,6 +1445,7 @@ function unequipSlot(type, idx) {
   }
   slots[idx] = null;
   state.inventories[invKey].push(item);
+  if (type === 'sub') rebuildDrones();
   renderInventory();
   updateHUD();
 }
@@ -1536,6 +1570,7 @@ function autoEquip(type) {
   for (let i = 0; i < 4; i++) slots[i] = toEquip[i] || null;
   state.inventories[invKey] = all;
 
+  if (type === 'sub') rebuildDrones();
   playEquipSound();
   renderInventory();
   updateHUD();
@@ -1683,6 +1718,97 @@ function updateOrbitVisuals() {
   }
 }
 
+// ---- INFECTION (parasite DoT) ----
+function updateInfections(dt) {
+  const toRemove = [];
+  for (let i = state.infections.length - 1; i >= 0; i--) {
+    const inf = state.infections[i];
+    inf.ttl -= dt;
+    if (inf.ttl <= 0) { state.infections.splice(i, 1); continue; }
+    const enemy = state.enemies.find(e => e.id === inf.enemyId);
+    if (!enemy) { state.infections.splice(i, 1); continue; }
+    const dmg = Math.max(1, Math.floor(inf.dmgPerSec * dt));
+    enemy.hp -= dmg;
+    if (Math.random() < dt * 2) showDamageNumber(enemy.x, enemy.y, dmg, false, true, null, 'parasite');
+    if (enemy.hp <= 0) {
+      // Propagate before kill
+      const ec = getEnemyCenter(enemy);
+      let closest = null, cDist = Infinity;
+      for (const e of state.enemies) {
+        if (e.id === enemy.id) continue;
+        const eec = getEnemyCenter(e);
+        const d = dist(ec.x, ec.y, eec.x, eec.y);
+        if (d < 60 && d < cDist) { cDist = d; closest = e; }
+      }
+      if (closest) {
+        // Check max infections for this sub
+        const myCount = state.infections.filter(x => x.subIdx === inf.subIdx).length;
+        if (myCount <= 3) { // will be reduced by 1 after splice
+          state.infections.push({ enemyId: closest.id, subIdx: inf.subIdx, dmgPerSec: inf.dmgPerSec, ttl: 5 });
+          const cec = getEnemyCenter(closest);
+          showSubEffect(cec.x, cec.y, '☣');
+          playSubSound('parasite');
+        }
+      }
+      state.infections.splice(i, 1);
+      killEnemy(enemy, true);
+    }
+  }
+}
+
+// ---- DRONES ----
+function rebuildDrones() {
+  // Remove old drone DOMs
+  for (const d of state.drones) { if (d.el) d.el.remove(); }
+  state.drones = [];
+  let count = 0;
+  for (let i = 0; i < 4; i++) {
+    const sub = state.equipped.subs[i];
+    if (sub && sub.autoMode === 'drone' && count < 4) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:absolute;color:#00ff88;font-size:14px;font-weight:bold;pointer-events:none;z-index:49;text-shadow:0 0 6px #00ff88;';
+      el.textContent = '[D]';
+      canvas.appendChild(el);
+      state.drones.push({ x: state.mouseX + rand(-50,50), y: state.mouseY + rand(-50,50), subIdx: i, cooldown: 0, el });
+      count++;
+    }
+  }
+}
+
+function updateDrones(dt) {
+  const stats = getComputedStats();
+  for (const d of state.drones) {
+    // Lerp toward cursor
+    d.x += (state.mouseX - d.x) * 0.03;
+    d.y += (state.mouseY - d.y) * 0.03;
+    d.el.style.left = (d.x - 10) + 'px';
+    d.el.style.top = (d.y - 7) + 'px';
+    d.cooldown = Math.max(0, d.cooldown - dt);
+    if (d.cooldown > 0) continue;
+    // Find nearest enemy within 100px
+    let nearest = null, nDist = Infinity;
+    for (const e of state.enemies) {
+      const ec = getEnemyCenter(e);
+      const dd = dist(d.x, d.y, ec.x, ec.y);
+      if (dd < 100 && dd < nDist) { nDist = dd; nearest = e; }
+    }
+    if (nearest) {
+      const sub = state.equipped.subs[d.subIdx];
+      if (!sub) continue;
+      const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+      const isCrit = Math.random() < stats.critChance;
+      const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
+      nearest.hp -= dmg;
+      showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, 'drone');
+      const ec = getEnemyCenter(nearest);
+      showSubEffect(ec.x, ec.y, '·');
+      playSubSound('drone');
+      d.cooldown = 0.8;
+      if (nearest.hp <= 0) killEnemy(nearest, true);
+    }
+  }
+}
+
 // ---- MAIN LOOP ----
 let lastTime = 0;
 function gameLoop(timestamp) {
@@ -1709,6 +1835,8 @@ function gameLoop(timestamp) {
     updateDrops(dt);
     updateSubAttacks(dt);
     updateOrbitVisuals();
+    updateInfections(dt);
+    updateDrones(dt);
   }
 
   updateHUD();
