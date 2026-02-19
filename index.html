@@ -215,8 +215,8 @@ body {
 }
 .enemy .hitbox {
   position: absolute;
-  top: 0px;
-  left: 35px;
+  top: 50%;
+  left: 50%;
   width: 10px;
   height: 10px;
   transform: translate(-50%, -50%);
@@ -862,6 +862,7 @@ function spawnEnemy() {
   enemy.el = el;
   enemy.labelEl = el.querySelector('.label');
   enemy.hpFillEl = el.querySelector('.hp-fill');
+  enemy.hitboxEl = el.querySelector('.hitbox');
   state.enemies.push(enemy);
 }
 
@@ -924,6 +925,10 @@ function updateEnemies(dt) {
 
 // ---- ATTACK (with CORE shapes) ----
 function getEnemyCenter(e) {
+  if (e.hitboxEl) {
+    const r = e.hitboxEl.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
   return { x: e.x + 35, y: e.y + 10 };
 }
 
