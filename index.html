@@ -375,6 +375,8 @@ let state = {
   mouseX: 0,
   mouseY: 0,
   upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, splashMult: 1, critChance: 0.05, critMult: 2 },
+  waveKills: 0,
+  waveKillTarget: 0,
   sp: 0,
   skillLevels: {},
   inventory: [],
@@ -505,6 +507,7 @@ function killEnemy(enemy) {
   state.kills++;
   state.xp += enemy.xp;
   state.waveEnemiesLeft--;
+  state.waveKills++;
   // Drop chance
   if (Math.random() < 0.15 || enemy.elite) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
@@ -679,6 +682,8 @@ function renderUpgradePanel() {
 function startWave() {
   const count = 5 + state.wave * 3;
   state.waveEnemiesLeft = count;
+  state.waveKills = 0;
+  state.waveKillTarget = Math.ceil(count * 0.7);
   state.waveTimer = 0;
   showWaveBanner(`// WAVE ${state.wave} — ${count} TARGETS //`);
   // Spawn initial batch
@@ -762,8 +767,8 @@ function gameLoop(timestamp) {
       state.waveSpawnLeft--;
     }
 
-    // Check wave complete
-    if (state.waveEnemiesLeft <= 0 && state.enemies.length === 0) {
+    // Check wave complete (kill 70% of wave to advance; survivors carry over)
+    if (state.waveKills >= state.waveKillTarget) {
       state.wave++;
       if (state.wave > 20) {
         showResult(true);
