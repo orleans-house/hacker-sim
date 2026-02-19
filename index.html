@@ -407,10 +407,11 @@ function spawnEnemy() {
   // Spawn from edges
   const side = randInt(0, 3);
   let x, y;
-  if (side === 0) { x = rand(0, w); y = CANVAS_PAD_TOP; }
-  else if (side === 1) { x = rand(0, w); y = h - CANVAS_PAD_BOT; }
-  else if (side === 2) { x = 0; y = rand(CANVAS_PAD_TOP, h - CANVAS_PAD_BOT); }
-  else { x = w; y = rand(CANVAS_PAD_TOP, h - CANVAS_PAD_BOT); }
+  const margin = 60;
+  if (side === 0) { x = rand(margin, w - margin); y = CANVAS_PAD_TOP + margin; }
+  else if (side === 1) { x = rand(margin, w - margin); y = h - CANVAS_PAD_BOT - margin; }
+  else if (side === 2) { x = margin; y = rand(CANVAS_PAD_TOP + margin, h - CANVAS_PAD_BOT - margin); }
+  else { x = w - margin; y = rand(CANVAS_PAD_TOP + margin, h - CANVAS_PAD_BOT - margin); }
 
   const enemy = {
     id: Date.now() + Math.random(),
@@ -451,11 +452,17 @@ function updateEnemies(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   for (const e of state.enemies) {
-    // Wander with occasional direction change
-    if (Math.random() < 0.01) {
-      const angle = Math.random() * Math.PI * 2;
-      e.vx = Math.cos(angle) * e.speed;
-      e.vy = Math.sin(angle) * e.speed;
+    // Drift toward center with some randomness
+    const cx = w / 2;
+    const cy = h / 2;
+    if (Math.random() < 0.02) {
+      const toCenterX = cx - e.x;
+      const toCenterY = cy - e.y;
+      const len = Math.hypot(toCenterX, toCenterY) || 1;
+      const randAngle = (Math.random() - 0.5) * Math.PI; // ±90° scatter
+      const baseAngle = Math.atan2(toCenterY, toCenterX) + randAngle;
+      e.vx = Math.cos(baseAngle) * e.speed;
+      e.vy = Math.sin(baseAngle) * e.speed;
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
