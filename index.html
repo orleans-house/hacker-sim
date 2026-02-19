@@ -414,6 +414,7 @@ body {
   </div>
   <div>CREDITS: <span id="hud-credits">0</span></div>
   <div>SCORE: <span id="hud-score">0</span></div>
+  <div><button id="save-btn" style="background:none;border:1px solid #00ff41;color:#00ff41;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();saveGame();this.textContent='SAVED';setTimeout(()=>this.textContent='SAVE',1000);">SAVE</button> <button id="reset-btn" style="background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();if(confirm('Reset all progress?'))resetGame();">RESET</button></div>
 </div>
 
 <div id="bottom-hud">
@@ -1494,19 +1495,70 @@ function clearAllEnemies() {
 }
 
 // ---- START ----
-function init() {
-  state.equipped.cores[0] = {
-    id: 0,
-    type: 'core',
-    name: 'Ping Flood',
-    rarity: 'common',
-    ilv: 1,
-    atk: 10,
-    splash: 50,
-    cd: 0.5,
-    affixes: [],
-    attackShape: 'circle',
+// ---- SAVE / LOAD ----
+const SAVE_KEY = 'hacksim_save';
+const SAVE_VERSION = 1;
+
+function saveGame() {
+  const data = {
+    version: SAVE_VERSION,
+    mapLv: state.mapLv,
+    score: state.score,
+    kills: state.kills,
+    credits: state.credits,
+    equipped: state.equipped,
+    inventories: state.inventories,
+    upgrades: state.upgrades,
+    skillLevels: state.skillLevels,
   };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+}
+
+function loadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return false;
+  try {
+    const data = JSON.parse(raw);
+    if (data.version !== SAVE_VERSION) return false;
+    state.mapLv = data.mapLv || 1;
+    state.score = data.score || 0;
+    state.kills = data.kills || 0;
+    state.credits = data.credits || 0;
+    state.equipped = data.equipped || { cores: [null,null,null,null], subs: [null,null,null,null], modules: [null,null,null,null] };
+    state.inventories = data.inventories || { cores: [], subs: [], modules: [] };
+    state.upgrades = data.upgrades || state.upgrades;
+    state.skillLevels = data.skillLevels || {};
+    // Re-apply skill levels to upgrades
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function resetGame() {
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+}
+
+// Auto-save every 30 seconds
+setInterval(saveGame, 30000);
+
+function init() {
+  const loaded = loadGame();
+  if (!loaded) {
+    state.equipped.cores[0] = {
+      id: 0,
+      type: 'core',
+      name: 'Ping Flood',
+      rarity: 'common',
+      ilv: 1,
+      atk: 10,
+      splash: 50,
+      cd: 0.5,
+      affixes: [],
+      attackShape: 'circle',
+    };
+  }
   state.running = true;
   lastTime = performance.now();
   const initial = Math.min(getMaxEnemies(), 12);
