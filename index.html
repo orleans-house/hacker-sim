@@ -440,6 +440,7 @@ body {
     MapLv:<select id="maplv-select"></select>
   </div>
   <div>CREDITS: <span id="hud-credits">0</span></div>
+  <div><label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="auto-advance" style="cursor:pointer;"> AUTO</label></div>
   <div>SCORE: <span id="hud-score">0</span></div>
   <div><button id="save-btn" style="background:none;border:1px solid #00ff41;color:#00ff41;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();saveGame();this.textContent='SAVED';setTimeout(()=>this.textContent='SAVE',1000);">SAVE</button> <button id="reset-btn" style="background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();if(confirm('Reset all progress?'))resetGame();">RESET</button></div>
 </div>
@@ -697,6 +698,8 @@ let state = {
   combo: 0,
   comboTimer: 0,
   maxCombo: 0,
+  mapKills: 0, // kills at current MapLv
+  autoAdvance: false,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -1414,6 +1417,8 @@ function killEnemy(enemy, fromSub) {
   logKill();
   logCredits(earnedCredits);
   checkMilestone();
+  state.mapKills++;
+  checkAutoAdvance();
   showCreditNumber(enemy.x, enemy.y, earnedCredits);
 
   const baseDropChance = 0.15;
@@ -2490,6 +2495,18 @@ function updateDpsPanel() {
   document.getElementById('cps-value').textContent = cps;
 }
 
+// ---- AUTO ADVANCE ----
+function checkAutoAdvance() {
+  if (!state.autoAdvance) return;
+  const threshold = 50 + state.mapLv * 10; // scales with MapLv
+  if (state.mapKills >= threshold && state.mapLv < 999) {
+    state.mapLv++;
+    state.mapKills = 0;
+    document.getElementById('maplv-select').value = state.mapLv;
+    showBanner('MAP LV ' + state.mapLv);
+  }
+}
+
 // ---- MILESTONES ----
 function checkMilestone() {
   if (state.score >= state.milestoneNext) {
@@ -2615,6 +2632,7 @@ mapLvSelect.value = state.mapLv;
 mapLvSelect.addEventListener('change', (ev) => {
   ev.stopPropagation();
   state.mapLv = parseInt(mapLvSelect.value);
+  state.mapKills = 0;
   clearAllEnemies();
   const initial = Math.min(getMaxEnemies(), getMaxEnemies());
   for (let i = 0; i < initial; i++) spawnEnemy();
@@ -2707,6 +2725,14 @@ function syncAutoSellUI() {
   document.getElementById('autosell-ilv').value = state.autoSellFilter.minIlv;
   document.getElementById('autosell-rarity').value = state.autoSellFilter.minRarity;
 }
+
+// Auto advance checkbox
+document.getElementById('auto-advance').addEventListener('change', (ev) => {
+  ev.stopPropagation();
+  state.autoAdvance = ev.target.checked;
+  state.mapKills = 0;
+});
+document.getElementById('auto-advance').addEventListener('mousedown', (ev) => ev.stopPropagation());
 
 function init() {
   const loaded = loadGame();
