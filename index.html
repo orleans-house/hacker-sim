@@ -779,7 +779,16 @@ function getComputedStats() {
   let xpBonus = affixTotals.xpBonus / 100;
   let dropBonus = affixTotals.dropRate / 100;
 
-  return { atk: Math.floor(atk), splash: Math.floor(splash), cd: Math.round(cd * 100) / 100, critChance: Math.min(0.95, critChance), critDmg, xpBonus, dropBonus, coreCount };
+  // ---- STAT CAPS (hard limits) ----
+  atk = Math.floor(atk);                          // no cap on ATK (scales with MapLv)
+  splash = Math.min(200, Math.floor(splash));      // max 200px radius
+  cd = Math.max(0.15, Math.round(cd * 100) / 100); // min 0.15s
+  critChance = Math.min(0.75, critChance);          // max 75%
+  critDmg = Math.min(10, critDmg);                  // max 10x
+  xpBonus = Math.min(5, xpBonus);                   // max +500% credits
+  dropBonus = Math.min(3, dropBonus);                // max +300% drop rate
+
+  return { atk, splash, cd, critChance, critDmg, xpBonus, dropBonus, coreCount };
 }
 
 // ---- ITEM GENERATION ----
@@ -1716,10 +1725,16 @@ function updateHUD() {
   const stats = getComputedStats();
   document.getElementById('hud-cores').textContent = stats.coreCount;
   document.getElementById('hud-atk').textContent = stats.atk;
-  document.getElementById('hud-splash').textContent = stats.splash;
+  const splashEl = document.getElementById('hud-splash');
+  splashEl.textContent = stats.splash;
+  splashEl.style.color = stats.splash >= 200 ? '#ffaa00' : '';
   document.getElementById('hud-cd').textContent = stats.cd.toFixed(2);
-  document.getElementById('hud-crit').textContent = Math.floor(stats.critChance * 100);
-  document.getElementById('hud-critdmg').textContent = stats.critDmg.toFixed(1);
+  const critEl = document.getElementById('hud-crit');
+  critEl.textContent = Math.floor(stats.critChance * 100);
+  critEl.style.color = stats.critChance >= 0.75 ? '#ffaa00' : '';
+  const critDmgEl = document.getElementById('hud-critdmg');
+  critDmgEl.textContent = stats.critDmg.toFixed(1);
+  critDmgEl.style.color = stats.critDmg >= 10 ? '#ffaa00' : '';
   updateCrosshair();
 }
 
