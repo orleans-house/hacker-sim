@@ -528,6 +528,24 @@ const ENEMY_TYPES = [
   { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20 },
 ];
 const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, credits: 30, score: 200, elite: true };
+
+// Elite mutations - random modifiers applied to elites
+const ELITE_MUTATIONS = [
+  { tag: 'SWIFT', color: '#00ffff', hpMult: 0.7, speedMult: 2.5, creditsMult: 1.5 },
+  { tag: 'ARMORED', color: '#888888', hpMult: 3.0, speedMult: 0.5, creditsMult: 2.0 },
+  { tag: 'SPLITTING', color: '#88ff00', hpMult: 0.8, speedMult: 1.2, creditsMult: 1.8, splits: true },
+  { tag: 'SHIELDED', color: '#4488ff', hpMult: 1.5, speedMult: 1.0, creditsMult: 2.0, shield: true },
+  { tag: 'BERSERKER', color: '#ff4444', hpMult: 1.2, speedMult: 1.0, creditsMult: 1.5, berserker: true },
+];
+
+// Boss definitions - appear at MapLv 10, 20, 30, etc.
+const BOSS_TYPES = [
+  { tag: 'KERNEL_ZERO', baseHp: 2000, speed: 8, credits: 200, score: 1000 },
+  { tag: 'ROOT_DAEMON', baseHp: 3000, speed: 6, credits: 300, score: 1500 },
+  { tag: 'VOID_PROXY', baseHp: 5000, speed: 12, credits: 500, score: 2500 },
+  { tag: 'OVERFLOW_GOD', baseHp: 8000, speed: 5, credits: 800, score: 4000 },
+  { tag: 'SINGULARITY', baseHp: 15000, speed: 4, credits: 1500, score: 8000 },
+];
 const RARITIES = ['common','uncommon','rare','epic','legendary','unique'];
 const RARITY_WEIGHTS = [50, 30, 14, 5, 1, 0.1];
 const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, unique: 5 };
@@ -642,6 +660,8 @@ let state = {
   pendingExplosions: [],
   infections: [],
   drones: [],
+  bossActive: false,
+  bossSpawned: {}, // mapLv -> true
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -930,8 +950,47 @@ function makeItem(rarity, mapLv) {
 }
 
 // ---- ENEMY MANAGEMENT ----
+function spawnBoss() {
+  if (state.bossActive) return;
+  const bossIdx = Math.min(Math.floor((state.mapLv - 1) / 10), BOSS_TYPES.length - 1);
+  const tmpl = BOSS_TYPES[bossIdx];
+  const scaledHp = Math.floor(tmpl.baseHp * getEnemyHpMult());
+  const w = window.innerWidth, h = window.innerHeight;
+  const enemy = {
+    id: Date.now() + Math.random(),
+    tag: tmpl.tag,
+    hp: scaledHp, maxHp: scaledHp,
+    speed: tmpl.speed,
+    credits: tmpl.credits,
+    score: tmpl.score,
+    elite: true, boss: true,
+    x: w / 2, y: CANVAS_PAD_TOP + 80,
+    el: null, vx: 0, vy: 0, marked: false,
+  };
+  const el = document.createElement('div');
+  el.className = 'enemy elite';
+  el.innerHTML = `<div class="hitbox"></div><div class="label" style="color:#ff4444;font-size:18px;text-shadow:0 0 10px #ff4444;">[BOSS:${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill" style="background:#ff4444;"></div></div>`;
+  el.style.left = enemy.x + 'px';
+  el.style.top = enemy.y + 'px';
+  canvas.appendChild(el);
+  enemy.el = el;
+  enemy.labelEl = el.querySelector('.label');
+  enemy.hpFillEl = el.querySelector('.hp-fill');
+  enemy.hitboxEl = el.querySelector('.hitbox');
+  state.enemies.push(enemy);
+  state.bossActive = true;
+  showBanner('BOSS: ' + enemy.tag);
+}
+
 function spawnEnemy() {
   if (!state.running) return;
+
+  // Boss spawn at MapLv multiples of 10
+  if (state.mapLv >= 10 && state.mapLv % 10 === 0 && !state.bossSpawned[state.mapLv] && !state.bossActive) {
+    state.bossSpawned[state.mapLv] = true;
+    spawnBoss();
+  }
+
   const isElite = Math.random() < getEliteRate();
   const template = isElite ? ELITE_TYPE : ENEMY_TYPES[randInt(0, ENEMY_TYPES.length - 1)];
   const scaledHp = Math.floor(template.baseHp * getEnemyHpMult());
@@ -958,14 +1017,36 @@ function spawnEnemy() {
     el: null,
     vx: 0, vy: 0,
     marked: false,
+    mutation: null,
+    boss: false,
+    shield: 0,
+    splits: false,
+    berserker: false,
   };
+
+  // Apply mutation to elites
+  if (enemy.elite && Math.random() < 0.6) {
+    const mut = ELITE_MUTATIONS[randInt(0, ELITE_MUTATIONS.length - 1)];
+    enemy.mutation = mut;
+    enemy.hp = Math.floor(enemy.hp * mut.hpMult);
+    enemy.maxHp = enemy.hp;
+    enemy.speed *= mut.speedMult;
+    enemy.credits = Math.floor(enemy.credits * mut.creditsMult);
+    enemy.tag = mut.tag + '_' + enemy.tag;
+    if (mut.shield) enemy.shield = Math.floor(enemy.maxHp * 0.3);
+    if (mut.splits) enemy.splits = true;
+    if (mut.berserker) enemy.berserker = true;
+  }
+
   const angle = Math.random() * Math.PI * 2;
   enemy.vx = Math.cos(angle) * enemy.speed;
   enemy.vy = Math.sin(angle) * enemy.speed;
 
+  const mutColor = enemy.mutation ? ` style="color:${enemy.mutation.color}"` : '';
+  const shieldText = enemy.shield > 0 ? `[S:${enemy.shield}]` : '';
   const el = document.createElement('div');
   el.className = 'enemy' + (enemy.elite ? ' elite' : '');
-  el.innerHTML = `<div class="hitbox"></div><div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+  el.innerHTML = `<div class="hitbox"></div><div class="label"${mutColor}>${shieldText}[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   canvas.appendChild(el);
@@ -974,6 +1055,19 @@ function spawnEnemy() {
   enemy.hpFillEl = el.querySelector('.hp-fill');
   enemy.hitboxEl = el.querySelector('.hitbox');
   state.enemies.push(enemy);
+}
+
+// Apply damage respecting shield
+function applyDamage(enemy, dmg) {
+  if (enemy.shield > 0) {
+    if (dmg <= enemy.shield) {
+      enemy.shield -= dmg;
+      return;
+    }
+    dmg -= enemy.shield;
+    enemy.shield = 0;
+  }
+  enemy.hp -= dmg;
 }
 
 function removeEnemy(enemy) {
@@ -1027,7 +1121,18 @@ function updateEnemies(dt) {
     }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
-    e.labelEl.textContent = e.marked ? `[!][${e.tag}:${e.hp}]` : `[${e.tag}:${e.hp}]`;
+    // Berserker: speed increases as HP drops
+    if (e.berserker && e.hp < e.maxHp * 0.5) {
+      const rage = 1 + (1 - e.hp / e.maxHp) * 2;
+      const spd = Math.hypot(e.vx, e.vy);
+      if (spd > 0 && spd < e.speed * rage) {
+        e.vx *= 1.02;
+        e.vy *= 1.02;
+      }
+    }
+    const shieldText = e.shield > 0 ? `[S:${e.shield}]` : '';
+    const bossPrefix = e.boss ? 'BOSS:' : '';
+    e.labelEl.textContent = e.marked ? `[!]${shieldText}[${bossPrefix}${e.tag}:${e.hp}]` : `${shieldText}[${bossPrefix}${e.tag}:${e.hp}]`;
     const hpPct = Math.max(0, e.hp / e.maxHp * 100);
     e.hpFillEl.style.width = hpPct + '%';
   }
@@ -1190,6 +1295,45 @@ function killEnemy(enemy, fromSub) {
   // Remove infections on this enemy (propagation handled in updateInfections)
   state.infections = state.infections.filter(inf => inf.enemyId !== enemy.id);
   playKillSound(enemy.tag);
+
+  // Boss death
+  if (enemy.boss) {
+    state.bossActive = false;
+    showBanner('BOSS DEFEATED');
+  }
+
+  // Splitting mutation: spawn 2 smaller enemies
+  if (enemy.splits && !enemy.splitChild) {
+    for (let i = 0; i < 2; i++) {
+      const child = {
+        id: Date.now() + Math.random() + i,
+        tag: enemy.tag.replace('SPLITTING_', ''),
+        hp: Math.floor(enemy.maxHp * 0.3),
+        maxHp: Math.floor(enemy.maxHp * 0.3),
+        speed: enemy.speed * 1.5,
+        credits: Math.floor(enemy.credits * 0.3),
+        score: Math.floor(enemy.score * 0.3),
+        elite: false, boss: false,
+        x: enemy.x + rand(-30, 30), y: enemy.y + rand(-30, 30),
+        el: null, vx: 0, vy: 0, marked: false,
+        mutation: null, shield: 0, splits: false, berserker: false, splitChild: true,
+      };
+      const a = Math.random() * Math.PI * 2;
+      child.vx = Math.cos(a) * child.speed;
+      child.vy = Math.sin(a) * child.speed;
+      const el = document.createElement('div');
+      el.className = 'enemy';
+      el.innerHTML = `<div class="hitbox"></div><div class="label">[${child.tag}:${child.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+      el.style.left = child.x + 'px';
+      el.style.top = child.y + 'px';
+      canvas.appendChild(el);
+      child.el = el;
+      child.labelEl = el.querySelector('.label');
+      child.hpFillEl = el.querySelector('.hp-fill');
+      child.hitboxEl = el.querySelector('.hitbox');
+      state.enemies.push(child);
+    }
+  }
   const mult = getScoreXpMult();
   const computed = getComputedStats();
   const creditMult = state.upgrades.creditMult * (1 + computed.xpBonus);
@@ -1203,12 +1347,17 @@ function killEnemy(enemy, fromSub) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
   }
 
+  // Boss: guaranteed named unique drop
+  if (enemy.boss) {
+    const tmpl = NAMED_UNIQUES[randInt(0, NAMED_UNIQUES.length - 1)];
+    spawnNamedUniqueDrop(enemy.x, enemy.y, tmpl, state.mapLv);
+  }
   // Named unique drop from elites (2% chance each)
-  if (enemy.elite) {
+  else if (enemy.elite) {
     for (const tmpl of NAMED_UNIQUES) {
       if (Math.random() < 0.02) {
         spawnNamedUniqueDrop(enemy.x, enemy.y, tmpl, state.mapLv);
-        break; // max 1 named unique per kill
+        break;
       }
     }
   }
