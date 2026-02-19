@@ -485,6 +485,15 @@ body {
   </div>
   <hr class="inv-separator">
   <div class="equip-section">
+    <div class="section-title" style="color:#00ffff;">── LOADOUT ──</div>
+    <div id="loadout-controls" style="display:flex;gap:4px;margin-bottom:4px;">
+      <input id="loadout-name" type="text" placeholder="name" maxlength="12" style="flex:1;background:#0a0a0a;border:1px solid #00ff41;color:#00ff41;font-family:'Courier New',monospace;font-size:10px;padding:2px 4px;">
+      <button class="inv-page-btn" style="font-size:10px;" onclick="event.stopPropagation();saveLoadout();">SAVE</button>
+    </div>
+    <div id="loadout-list"></div>
+  </div>
+  <hr class="inv-separator">
+  <div class="equip-section">
     <div class="section-title" style="color:#ffaa00;">── FORGE ──</div>
     <div style="font-size:10px;color:#888;margin-bottom:4px;">3 same-type + same-archetype = 1 higher rarity</div>
     <div id="forge-options"></div>
@@ -679,6 +688,7 @@ let state = {
   drones: [],
   bossActive: false,
   bossSpawned: {}, // mapLv -> true
+  loadouts: [], // [{name, equipped: {cores, subs, modules}}]
   // DPS tracking
   dpsLog: [], // [{time, dmg}]
   killLog: [], // [{time}]
@@ -1951,8 +1961,9 @@ function renderInventory() {
   addAutoEquipBtn('inv-page-sub', 'sub');
   addAutoEquipBtn('inv-page-mod', 'module');
 
-  // Render forge options
+  // Render forge options & loadouts
   renderForge();
+  renderLoadouts();
 }
 
 function addAutoEquipBtn(containerId, type) {
@@ -2279,6 +2290,89 @@ function bulkSell() {
   updateHUD();
 }
 
+// ---- LOADOUT SYSTEM ----
+function saveLoadout() {
+  const nameEl = document.getElementById('loadout-name');
+  const name = nameEl.value.trim() || ('Build ' + (state.loadouts.length + 1));
+  const snapshot = {
+    name,
+    equipped: {
+      cores: state.equipped.cores.map(i => i ? i.id : null),
+      subs: state.equipped.subs.map(i => i ? i.id : null),
+      modules: state.equipped.modules.map(i => i ? i.id : null),
+    },
+    // Store full item data for restoration
+    items: [...state.equipped.cores, ...state.equipped.subs, ...state.equipped.modules].filter(Boolean).map(i => ({...i})),
+  };
+  // Replace if same name exists
+  state.loadouts = state.loadouts.filter(l => l.name !== name);
+  state.loadouts.push(snapshot);
+  if (state.loadouts.length > 5) state.loadouts.shift(); // max 5
+  nameEl.value = '';
+  renderLoadouts();
+  saveGame();
+  showBanner('LOADOUT SAVED: ' + name);
+}
+
+function applyLoadout(loadout) {
+  // Unequip all to inventory first
+  for (const type of ['cores', 'subs', 'modules']) {
+    for (let i = 0; i < 4; i++) {
+      if (state.equipped[type][i]) {
+        const invKey = type;
+        if (state.inventories[invKey].length < MAX_INVENTORY) {
+          state.inventories[invKey].push(state.equipped[type][i]);
+        }
+        state.equipped[type][i] = null;
+      }
+    }
+  }
+  // Re-equip from loadout
+  for (const type of ['cores', 'subs', 'modules']) {
+    for (let i = 0; i < 4; i++) {
+      const targetId = loadout.equipped[type][i];
+      if (!targetId) continue;
+      const invKey = type;
+      const idx = state.inventories[invKey].findIndex(item => item.id === targetId);
+      if (idx !== -1) {
+        state.equipped[type][i] = state.inventories[invKey][idx];
+        state.inventories[invKey].splice(idx, 1);
+      }
+    }
+  }
+  rebuildDrones();
+  renderInventory();
+  updateHUD();
+  playEquipSound();
+  showBanner('LOADOUT: ' + loadout.name);
+}
+
+function deleteLoadout(name) {
+  state.loadouts = state.loadouts.filter(l => l.name !== name);
+  renderLoadouts();
+  saveGame();
+}
+
+function renderLoadouts() {
+  const container = document.getElementById('loadout-list');
+  container.innerHTML = '';
+  for (const lo of state.loadouts) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:2px 0;font-size:10px;';
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'color:#00ffff;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nameSpan.textContent = lo.name;
+    nameSpan.addEventListener('click', (ev) => { ev.stopPropagation(); applyLoadout(lo); });
+    const delBtn = document.createElement('span');
+    delBtn.style.cssText = 'color:#ff4444;cursor:pointer;margin-left:4px;';
+    delBtn.textContent = 'x';
+    delBtn.addEventListener('click', (ev) => { ev.stopPropagation(); deleteLoadout(lo.name); });
+    row.appendChild(nameSpan);
+    row.appendChild(delBtn);
+    container.appendChild(row);
+  }
+}
+
 // ---- FORGE SYSTEM ----
 function getForgeOptions() {
   const options = [];
@@ -2534,6 +2628,7 @@ function saveGame() {
     upgrades: state.upgrades,
     skillLevels: state.skillLevels,
     autoSellFilter: state.autoSellFilter,
+    loadouts: state.loadouts,
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
@@ -2553,6 +2648,7 @@ function loadGame() {
     state.upgrades = data.upgrades || state.upgrades;
     state.skillLevels = data.skillLevels || {};
     state.autoSellFilter = data.autoSellFilter || { minIlv: 0, minRarity: 'common' };
+    state.loadouts = data.loadouts || [];
     // Ensure new upgrade fields exist
     if (!state.upgrades.allDmgMult) state.upgrades.allDmgMult = 1;
     if (!state.upgrades.subAtkMult) state.upgrades.subAtkMult = 1;
