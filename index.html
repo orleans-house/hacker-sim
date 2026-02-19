@@ -1138,7 +1138,7 @@ function applyDamage(enemy, dmg) {
     dmg -= enemy.shield;
     enemy.shield = 0;
   }
-  applyDamage(enemy, dmg);
+  enemy.hp -= dmg;
 }
 
 function removeEnemy(enemy) {
@@ -1713,7 +1713,7 @@ function updateSubAttacks(dt) {
     for (const e of [...state.enemies]) {
       const ec = getEnemyCenter(e);
       if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
-        e.hp -= explosionDmg;
+        applyDamage(e, explosionDmg);
         showDamageNumber(e.x, e.y, explosionDmg, false, true, null, 'explode');
         if (e.hp <= 0) killEnemy(e, true);
       }
