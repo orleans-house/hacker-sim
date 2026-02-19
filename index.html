@@ -33,19 +33,26 @@ body {
   z-index: 100;
   font-size: 14px;
 }
-#hud .trace-bar {
-  width: 200px;
-  height: 14px;
+.maplv-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.maplv-btn {
+  background: none;
   border: 1px solid #00ff41;
-  position: relative;
+  color: #00ff41;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
-#hud .trace-fill {
-  height: 100%;
-  background: #00ff41;
-  transition: width 0.3s;
-}
-#hud .trace-bar.danger { border-color: #ff4444; }
-#hud .trace-bar.danger .trace-fill { background: #ff4444; }
+.maplv-btn:hover { background: rgba(0,255,65,0.2); }
 
 /* Bottom HUD */
 #bottom-hud {
@@ -299,31 +306,6 @@ body {
 .upgrade-btn:disabled { color: #555; border-color: #555; cursor: default; }
 .upgrade-btn:disabled:hover { background: none; }
 
-/* Game over / Victory */
-#result-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.9);
-  z-index: 300;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-#result-overlay.active { display: flex; }
-#result-overlay h1 { font-size: 36px; margin-bottom: 16px; }
-#result-overlay .stats { font-size: 16px; margin-bottom: 24px; text-align: center; line-height: 1.8; }
-#result-overlay button {
-  font-family: 'Courier New', monospace;
-  font-size: 16px;
-  color: #00ff41;
-  background: none;
-  border: 1px solid #00ff41;
-  padding: 10px 30px;
-  cursor: pointer;
-}
-#result-overlay button:hover { background: rgba(0,255,65,0.2); }
-
 /* Crosshair + splash range indicator */
 #crosshair {
   position: fixed;
@@ -344,8 +326,8 @@ body {
   font-weight: bold;
 }
 
-/* Wave banner */
-#wave-banner {
+/* Status banner */
+#status-banner {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -362,11 +344,12 @@ body {
 
 <div id="hud">
   <div>HACK.SIM</div>
-  <div>WAVE: <span id="hud-wave">1</span></div>
-  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span> | SP: <span id="hud-sp-top">0</span></div>
-  <div>TRACE: <span id="hud-trace-pct">0</span>%
-    <div class="trace-bar" id="trace-bar"><div class="trace-fill" id="trace-fill"></div></div>
+  <div class="maplv-control">
+    MapLv:<span id="hud-maplv">1</span>
+    <button class="maplv-btn" id="maplv-down">▼</button>
+    <button class="maplv-btn" id="maplv-up">▲</button>
   </div>
+  <div>LV.<span id="hud-level">1</span> | XP: <span id="hud-xp">0</span>/<span id="hud-xp-max">10</span> | SP: <span id="hud-sp-top">0</span></div>
   <div>SCORE: <span id="hud-score">0</span></div>
 </div>
 
@@ -395,17 +378,11 @@ body {
 <div id="game-canvas"></div>
 <div id="crosshair"></div>
 
-<div id="wave-banner"></div>
+<div id="status-banner"></div>
 
 <div id="upgrade-panel">
   <h3>UPGRADES [SP: <span id="hud-sp">0</span>]</h3>
   <div id="upgrade-list"></div>
-</div>
-
-<div id="result-overlay">
-  <h1 id="result-title"></h1>
-  <div class="stats" id="result-stats"></div>
-  <button onclick="location.reload()">[ RESTART ]</button>
 </div>
 
 <div class="item-tooltip" id="item-tooltip"></div>
@@ -414,7 +391,7 @@ body {
 // ---- CONFIG ----
 const CANVAS_PAD_TOP = 40;
 const CANVAS_PAD_BOT = 40;
-const TRACE_PER_SEC = 0.3;
+const SPAWN_INTERVAL = 0.8;
 const ENEMY_TYPES = [
   { tag: 'SRV', baseHp: 20, speed: 30, xp: 2, score: 10 },
   { tag: 'NODE', baseHp: 15, speed: 45, xp: 2, score: 10 },
@@ -437,7 +414,7 @@ const MODULE_NAMES = [
   'Branch Predictor','Entropy Filter','Hash Accelerator','Codec Overdriver'
 ];
 
-// Affix definitions
+// Affix definitions (traceRate removed)
 const AFFIX_POOL = [
   { id: 'flatAtk',    label: (v) => `ATK +${v}`,           gen: (ilv) => randInt(2 + ilv, 5 + ilv * 2) },
   { id: 'pctAtk',     label: (v) => `ATK +${v}%`,          gen: (ilv) => randInt(3, 8 + ilv) },
@@ -445,22 +422,21 @@ const AFFIX_POOL = [
   { id: 'pctCd',      label: (v) => `CD -${v}%`,           gen: (ilv) => randInt(2, 6 + Math.floor(ilv / 2)) },
   { id: 'critChance', label: (v) => `CritChance +${v}%`,   gen: (ilv) => randInt(1, 4 + Math.floor(ilv / 3)) },
   { id: 'critDmg',    label: (v) => `CritDMG +${v}%`,      gen: (ilv) => randInt(5, 15 + ilv) },
-  { id: 'traceRate',  label: (v) => `TraceRate -${v}%`,    gen: (ilv) => randInt(1, 3 + Math.floor(ilv / 3)) },
+  { id: 'xpBonus',    label: (v) => `XP +${v}%`,           gen: (ilv) => randInt(3, 8 + ilv) },
+  { id: 'dropRate',   label: (v) => `DropRate +${v}%`,     gen: (ilv) => randInt(2, 5 + Math.floor(ilv / 2)) },
 ];
 
 // ---- STATE ----
 let state = {
   running: false,
   paused: false,
-  wave: 1,
-  waveTimer: 0,
-  waveEnemiesLeft: 0,
+  mapLv: 1,
+  spawnTimer: 0,
   score: 0,
   kills: 0,
   level: 1,
   xp: 0,
   xpToNext: 10,
-  trace: 0,
   enemies: [],
   drops: [],
   equipped: {
@@ -470,9 +446,7 @@ let state = {
   cooldown: 0,
   mouseX: 0,
   mouseY: 0,
-  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, traceReduce: 0, splashMult: 1, critChance: 0.05, critMult: 2 },
-  waveKills: 0,
-  waveKillTarget: 0,
+  upgrades: { atkMult: 1, rangeMult: 1, cdMult: 1, splashMult: 1, critChance: 0.05, critMult: 2, xpMult: 1, dropMult: 1 },
   sp: 0,
   skillLevels: {},
   inventory: [],
@@ -480,6 +454,12 @@ let state = {
 };
 
 const canvas = document.getElementById('game-canvas');
+
+// ---- MAP LEVEL HELPERS ----
+function getEnemyHpMult() { return 1 + (state.mapLv - 1) * 0.5; }
+function getMaxEnemies() { return Math.min(40, 8 + state.mapLv * 2); }
+function getEliteRate() { return Math.min(0.3, 0.03 + state.mapLv * 0.02); }
+function getScoreXpMult() { return 1 + (state.mapLv - 1) * 0.3; }
 
 // ---- UTILITIES ----
 function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -494,7 +474,6 @@ function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
 
 // ---- COMPUTED STATS ----
 function getComputedStats() {
-  // Base from cores
   let baseAtk = 0, baseSplash = 0, baseCd = Infinity;
   let coreCount = 0;
   for (const c of state.equipped.cores) {
@@ -505,10 +484,9 @@ function getComputedStats() {
       coreCount++;
     }
   }
-  if (coreCount === 0) return { atk: 0, splash: 30, cd: 1, critChance: 0, critDmg: 0, traceReduce: 0, coreCount: 0 };
+  if (coreCount === 0) return { atk: 0, splash: 30, cd: 1, critChance: 0, critDmg: 0, xpBonus: 0, dropBonus: 0, coreCount: 0 };
 
-  // Gather all affixes from cores + modules
-  let affixTotals = { flatAtk: 0, pctAtk: 0, flatSplash: 0, pctCd: 0, critChance: 0, critDmg: 0, traceRate: 0 };
+  let affixTotals = { flatAtk: 0, pctAtk: 0, flatSplash: 0, pctCd: 0, critChance: 0, critDmg: 0, xpBonus: 0, dropRate: 0 };
   const allEquipped = [...state.equipped.cores, ...state.equipped.modules];
   for (const item of allEquipped) {
     if (!item || !item.affixes) continue;
@@ -517,22 +495,21 @@ function getComputedStats() {
     }
   }
 
-  // Apply affixes to base
   let atk = (baseAtk + affixTotals.flatAtk) * (1 + affixTotals.pctAtk / 100);
   let splash = baseSplash + affixTotals.flatSplash;
   let cd = baseCd * (1 - affixTotals.pctCd / 100);
   cd = Math.max(0.05, cd);
 
-  // Apply upgrades (skill points) as multipliers
   atk = atk * state.upgrades.atkMult;
   splash = splash * state.upgrades.splashMult;
   cd = cd * state.upgrades.cdMult;
 
   let critChance = (state.upgrades.critChance + affixTotals.critChance / 100);
   let critDmg = (state.upgrades.critMult + affixTotals.critDmg / 100);
-  let traceReduce = affixTotals.traceRate / 100; // additive reduction before upgrades
+  let xpBonus = affixTotals.xpBonus / 100;
+  let dropBonus = affixTotals.dropRate / 100;
 
-  return { atk: Math.floor(atk), splash: Math.floor(splash), cd: Math.round(cd * 100) / 100, critChance: Math.min(0.95, critChance), critDmg, traceReduce, coreCount };
+  return { atk: Math.floor(atk), splash: Math.floor(splash), cd: Math.round(cd * 100) / 100, critChance: Math.min(0.95, critChance), critDmg, xpBonus, dropBonus, coreCount };
 }
 
 // ---- ITEM GENERATION ----
@@ -550,9 +527,9 @@ function generateAffixes(ilv, count) {
   return affixes;
 }
 
-function makeItem(rarity, wave) {
+function makeItem(rarity, mapLv) {
   const isCore = Math.random() < 0.6;
-  const ilv = wave;
+  const ilv = mapLv;
   const rarityIdx = RARITIES.indexOf(rarity);
   const affixCount = RARITY_AFFIX_COUNT[rarity];
   const affixes = generateAffixes(ilv, affixCount);
@@ -587,9 +564,9 @@ function makeItem(rarity, wave) {
 // ---- ENEMY MANAGEMENT ----
 function spawnEnemy() {
   if (!state.running) return;
-  const isElite = state.wave > 1 && Math.random() < 0.05 + state.wave * 0.01;
+  const isElite = Math.random() < getEliteRate();
   const template = isElite ? ELITE_TYPE : ENEMY_TYPES[randInt(0, ENEMY_TYPES.length - 1)];
-  const scaledHp = Math.floor(template.baseHp * (1 + (state.wave - 1) * 0.4));
+  const scaledHp = Math.floor(template.baseHp * getEnemyHpMult());
   const w = window.innerWidth;
   const h = window.innerHeight;
   const side = randInt(0, 3);
@@ -638,31 +615,26 @@ function updateEnemies(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   for (const e of state.enemies) {
-    // Per-frame center pull + damping
-    const pullDx = w/2 - e.x, pullDy = h/2 - e.y;
-    const pullDist = Math.hypot(pullDx, pullDy) || 1;
-    e.vx += (pullDx / pullDist) * 15 * dt;
-    e.vy += (pullDy / pullDist) * 15 * dt;
-    e.vx *= 0.98;
-    e.vy *= 0.98;
-    // Occasional random nudge for variety
-    if (Math.random() < 0.01) {
-      const angle = Math.random() * Math.PI * 2;
-      e.vx += Math.cos(angle) * e.speed * 0.3;
-      e.vy += Math.sin(angle) * e.speed * 0.3;
+    const cx = w / 2;
+    const cy = h / 2;
+    if (Math.random() < 0.015) {
+      const randAngle = Math.random() * Math.PI * 2;
+      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
+      const finalAngle = toCenterAngle * 0.3 + randAngle * 0.7;
+      e.vx = Math.cos(finalAngle) * e.speed;
+      e.vy = Math.sin(finalAngle) * e.speed;
     }
-    // Repel from nearby enemies (gentle)
     for (const other of state.enemies) {
       if (other.id === e.id) continue;
       const dx = e.x - other.x;
       const dy = e.y - other.y;
       const d = Math.hypot(dx, dy);
-      if (d < 50 && d > 0) {
-        e.vx += (dx / d) * (50 - d) * 0.3 * dt;
-        e.vy += (dy / d) * (50 - d) * 0.3 * dt;
+      if (d < 60 && d > 0) {
+        const force = (60 - d) * 0.5;
+        e.vx += (dx / d) * force;
+        e.vy += (dy / d) * force;
       }
     }
-    // Clamp speed
     const spd = Math.hypot(e.vx, e.vy);
     if (spd > e.speed * 1.5) {
       e.vx = (e.vx / spd) * e.speed * 1.5;
@@ -670,19 +642,10 @@ function updateEnemies(dt) {
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    // Bounce off edges — redirect toward center on bounce
-    const cx = w / 2, cy = h / 2;
-    let bounced = false;
-    if (e.x < 10) { e.x = 10; bounced = true; }
-    if (e.x > w - 10) { e.x = w - 10; bounced = true; }
-    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; bounced = true; }
-    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; bounced = true; }
-    if (bounced) {
-      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
-      const scatter = (Math.random() - 0.5) * Math.PI * 0.6;
-      e.vx = Math.cos(toCenterAngle + scatter) * e.speed;
-      e.vy = Math.sin(toCenterAngle + scatter) * e.speed;
-    }
+    if (e.x < 10) { e.x = 10; e.vx = Math.abs(e.vx); }
+    if (e.x > w - 10) { e.x = w - 10; e.vx = -Math.abs(e.vx); }
+    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; e.vy = Math.abs(e.vy); }
+    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; e.vy = -Math.abs(e.vy); }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
     e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
@@ -718,12 +681,16 @@ function attack(mx, my) {
 }
 
 function killEnemy(enemy) {
-  state.score += enemy.score;
+  const mult = getScoreXpMult();
+  const computed = getComputedStats();
+  const xpMult = state.upgrades.xpMult * (1 + computed.xpBonus);
+  state.score += Math.floor(enemy.score * mult);
   state.kills++;
-  state.xp += enemy.xp;
-  state.waveEnemiesLeft--;
-  state.waveKills++;
-  if (Math.random() < 0.15 || enemy.elite) {
+  state.xp += Math.floor(enemy.xp * mult * xpMult);
+
+  const baseDropChance = 0.15;
+  const dropChance = baseDropChance * state.upgrades.dropMult * (1 + computed.dropBonus);
+  if (Math.random() < dropChance || enemy.elite) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
   }
   removeEnemy(enemy);
@@ -755,7 +722,7 @@ function showDamageNumber(x, y, dmg, crit) {
 function spawnDrop(x, y, guaranteed) {
   if (state.inventory.length >= state.maxInventory) return;
   const rarity = guaranteed ? pickWeighted(RARITIES, [5, 15, 35, 30, 15]) : pickWeighted(RARITIES, RARITY_WEIGHTS);
-  const item = makeItem(rarity, state.wave);
+  const item = makeItem(rarity, state.mapLv);
 
   const drop = {
     id: item.id,
@@ -802,13 +769,18 @@ function updateDrops(dt) {
 }
 
 // ---- EQUIP / UNEQUIP ----
+function showBanner(text) {
+  const banner = document.getElementById('status-banner');
+  banner.textContent = text;
+  banner.style.display = 'block';
+  setTimeout(() => { banner.style.display = 'none'; }, 1500);
+}
+
 function equipItem(item) {
   const slots = item.type === 'core' ? state.equipped.cores : state.equipped.modules;
   const emptyIdx = slots.indexOf(null);
   if (emptyIdx === -1) {
-    // No empty slot — flash message
-    showWaveBanner('NO EMPTY ' + item.type.toUpperCase() + ' SLOT');
-    setTimeout(() => { document.getElementById('wave-banner').style.display = 'none'; }, 1000);
+    showBanner('NO EMPTY ' + item.type.toUpperCase() + ' SLOT');
     return;
   }
   slots[emptyIdx] = item;
@@ -822,8 +794,7 @@ function unequipSlot(type, idx) {
   const item = slots[idx];
   if (!item) return;
   if (state.inventory.length >= state.maxInventory) {
-    showWaveBanner('INVENTORY FULL');
-    setTimeout(() => { document.getElementById('wave-banner').style.display = 'none'; }, 1000);
+    showBanner('INVENTORY FULL');
     return;
   }
   slots[idx] = null;
@@ -871,7 +842,6 @@ function hideTooltip() {
 
 // ---- RENDER INVENTORY ----
 function renderInventory() {
-  // Equip slots
   const coreContainer = document.getElementById('core-slots');
   const modContainer = document.getElementById('module-slots');
   coreContainer.innerHTML = '';
@@ -905,7 +875,6 @@ function renderInventory() {
     modContainer.appendChild(slot);
   }
 
-  // Inventory list
   const container = document.getElementById('inv-list');
   document.getElementById('inv-count').textContent = state.inventory.length;
   container.innerHTML = '';
@@ -913,12 +882,6 @@ function renderInventory() {
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
     const typeTag = item.type === 'core' ? 'CORE' : 'MOD';
-    let statsText = '';
-    if (item.type === 'core') {
-      statsText = `A${item.atk} S${item.splash}`;
-    } else if (item.affixes.length > 0) {
-      statsText = item.affixes.map(a => a.label(a.value)).join(', ').substring(0, 20);
-    }
     row.innerHTML = `<span class="inv-name">${item.name}</span><span class="inv-type">${typeTag}</span><span class="inv-trash">✕</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
@@ -946,7 +909,8 @@ const SKILL_POOL = [
   { id: 'splash', name: 'Splash +20%', cost: 2, maxLv: 5, apply: () => { state.upgrades.splashMult += 0.2; } },
   { id: 'crit', name: 'Crit +10%', cost: 1, maxLv: 6, apply: () => { state.upgrades.critChance = Math.min(0.8, state.upgrades.critChance + 0.1); } },
   { id: 'critdmg', name: 'CritDMG +50%', cost: 2, maxLv: 5, apply: () => { state.upgrades.critMult += 0.5; } },
-  { id: 'trace', name: 'Trace -10%', cost: 2, maxLv: 5, apply: () => { state.upgrades.traceReduce = 1 - (1 - state.upgrades.traceReduce) * 0.9; } },
+  { id: 'xpbonus', name: 'XP +15%', cost: 1, maxLv: 10, apply: () => { state.upgrades.xpMult += 0.15; } },
+  { id: 'droprate', name: 'Drop +20%', cost: 2, maxLv: 5, apply: () => { state.upgrades.dropMult += 0.2; } },
 ];
 
 function renderUpgradePanel() {
@@ -979,40 +943,15 @@ function renderUpgradePanel() {
   }
 }
 
-// ---- WAVES ----
-function startWave() {
-  const count = 5 + state.wave * 3;
-  state.waveEnemiesLeft = count;
-  state.waveKills = 0;
-  state.waveKillTarget = Math.ceil(count * 0.7);
-  state.waveTimer = 0;
-  showWaveBanner(`// WAVE ${state.wave} — ${count} TARGETS //`);
-  const initial = Math.min(count, 5);
-  for (let i = 0; i < initial; i++) setTimeout(() => spawnEnemy(), i * 300);
-  state.waveSpawnLeft = count - initial;
-}
-
-function showWaveBanner(text) {
-  const banner = document.getElementById('wave-banner');
-  banner.textContent = text;
-  banner.style.display = 'block';
-  setTimeout(() => { banner.style.display = 'none'; }, 2000);
-}
-
 // ---- HUD ----
 function updateHUD() {
-  document.getElementById('hud-wave').textContent = state.wave;
+  document.getElementById('hud-maplv').textContent = state.mapLv;
   document.getElementById('hud-level').textContent = state.level;
   document.getElementById('hud-xp').textContent = state.xp;
   document.getElementById('hud-xp-max').textContent = state.xpToNext;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
   document.getElementById('hud-sp-top').textContent = state.sp;
-  const tracePct = Math.min(100, Math.floor(state.trace));
-  document.getElementById('hud-trace-pct').textContent = tracePct;
-  document.getElementById('trace-fill').style.width = tracePct + '%';
-  const traceBar = document.getElementById('trace-bar');
-  traceBar.className = 'trace-bar' + (tracePct >= 70 ? ' danger' : '');
 
   const stats = getComputedStats();
   document.getElementById('hud-cores').textContent = stats.coreCount;
@@ -1024,18 +963,6 @@ function updateHUD() {
   updateCrosshair();
 }
 
-// ---- GAME OVER / WIN ----
-function showResult(won) {
-  state.running = false;
-  const overlay = document.getElementById('result-overlay');
-  const title = document.getElementById('result-title');
-  const stats = document.getElementById('result-stats');
-  title.textContent = won ? '// NETWORK COMPROMISED //' : '// TRACED — CONNECTION LOST //';
-  title.style.color = won ? '#00ff41' : '#ff4444';
-  stats.innerHTML = `SCORE: ${state.score}<br>KILLS: ${state.kills}<br>WAVE: ${state.wave}<br>LEVEL: ${state.level}`;
-  overlay.classList.add('active');
-}
-
 // ---- MAIN LOOP ----
 let lastTime = 0;
 function gameLoop(timestamp) {
@@ -1044,15 +971,6 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
 
   if (!state.paused) {
-    // Trace
-    const computed = getComputedStats();
-    const traceRate = Math.max(0.15, (TRACE_PER_SEC + state.wave * 0.05) * (1 - state.upgrades.traceReduce) * (1 - computed.traceReduce));
-    state.trace += traceRate * dt;
-    if (state.trace >= 100) {
-      showResult(false);
-      return;
-    }
-
     // Cooldown
     if (state.cooldown > 0) state.cooldown = Math.max(0, state.cooldown - dt);
 
@@ -1063,22 +981,11 @@ function gameLoop(timestamp) {
       }
     }
 
-    // Spawn remaining enemies in wave
-    state.waveTimer += dt;
-    if (state.waveSpawnLeft > 0 && state.waveTimer > 1.5) {
-      state.waveTimer = 0;
+    // Continuous spawn
+    state.spawnTimer += dt;
+    if (state.spawnTimer >= SPAWN_INTERVAL && state.enemies.length < getMaxEnemies()) {
+      state.spawnTimer = 0;
       spawnEnemy();
-      state.waveSpawnLeft--;
-    }
-
-    // Check wave complete
-    if (state.waveKills >= state.waveKillTarget) {
-      state.wave++;
-      if (state.wave > 20) {
-        showResult(true);
-        return;
-      }
-      startWave();
     }
 
     updateEnemies(dt);
@@ -1112,9 +1019,23 @@ document.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseDown = false;
 });
 
+// MapLv buttons
+document.getElementById('maplv-up').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  state.mapLv++;
+  updateHUD();
+});
+document.getElementById('maplv-down').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  if (state.mapLv > 1) state.mapLv--;
+  updateHUD();
+});
+// Prevent attacks when clicking MapLv buttons
+document.getElementById('maplv-up').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
+document.getElementById('maplv-down').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
+
 // ---- START ----
 function init() {
-  // Initial equipment: CORE slot 1 = Ping Flood (iLv1, common)
   state.equipped.cores[0] = {
     id: 0,
     type: 'core',
@@ -1128,7 +1049,9 @@ function init() {
   };
   state.running = true;
   lastTime = performance.now();
-  startWave();
+  // Spawn initial enemies
+  const initial = Math.min(getMaxEnemies(), 5);
+  for (let i = 0; i < initial; i++) spawnEnemy();
   renderUpgradePanel();
   renderInventory();
   updateHUD();
