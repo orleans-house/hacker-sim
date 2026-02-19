@@ -440,6 +440,7 @@ body {
     MapLv:<select id="maplv-select"></select>
   </div>
   <div>CREDITS: <span id="hud-credits">0</span></div>
+  <div><label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="auto-advance" style="cursor:pointer;"> AUTO</label></div>
   <div>SCORE: <span id="hud-score">0</span></div>
   <div><button id="save-btn" style="background:none;border:1px solid #00ff41;color:#00ff41;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();saveGame();this.textContent='SAVED';setTimeout(()=>this.textContent='SAVE',1000);">SAVE</button> <button id="reset-btn" style="background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:2px 6px;" onclick="event.stopPropagation();if(confirm('Reset all progress?'))resetGame();">RESET</button></div>
 </div>
@@ -448,7 +449,9 @@ body {
   <div>CORES: <span id="hud-cores">1</span>/4</div>
   <div>ATK: <span id="hud-atk">10</span> | SPLASH: <span id="hud-splash">50</span> | CD: <span id="hud-cd">0.50</span>s</div>
   <div>CRIT: <span id="hud-crit">5</span>% x<span id="hud-critdmg">2.0</span></div>
-  <div>KILLS: <span id="hud-kills">0</span></div>
+  <div>KILLS: <span id="hud-kills">0</span> | <span id="hud-combo" style="color:#ff66aa;"></span></div>
+  <div id="hud-synergy"></div>
+  <div id="hud-corruption"></div>
 </div>
 
 <div id="inventory-panel">
@@ -481,6 +484,21 @@ body {
     <div id="inv-list-mod"></div>
     <div class="inv-page-controls" id="inv-page-mod"></div>
   </div>
+  <hr class="inv-separator">
+  <div class="equip-section">
+    <div class="section-title" style="color:#00ffff;">── LOADOUT ──</div>
+    <div id="loadout-controls" style="display:flex;gap:4px;margin-bottom:4px;">
+      <input id="loadout-name" type="text" placeholder="name" maxlength="12" style="flex:1;background:#0a0a0a;border:1px solid #00ff41;color:#00ff41;font-family:'Courier New',monospace;font-size:10px;padding:2px 4px;">
+      <button class="inv-page-btn" style="font-size:10px;" onclick="event.stopPropagation();saveLoadout();">SAVE</button>
+    </div>
+    <div id="loadout-list"></div>
+  </div>
+  <hr class="inv-separator">
+  <div class="equip-section">
+    <div class="section-title" style="color:#ffaa00;">── FORGE ──</div>
+    <div style="font-size:10px;color:#888;margin-bottom:4px;">3 same-type + same-archetype = 1 higher rarity</div>
+    <div id="forge-options"></div>
+  </div>
 </div>
 
 <div id="game-canvas"></div>
@@ -510,6 +528,21 @@ body {
       <option value="unique">unique</option>
     </select>
   </div>
+  <div class="upgrade-row">
+    <button id="bulk-sell-btn" style="width:100%;background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:3px;" onclick="event.stopPropagation();bulkSell();">SELL FILTERED</button>
+  </div>
+</div>
+
+<div id="terminal-log" style="position:fixed;bottom:100px;left:10px;width:250px;height:150px;background:rgba(0,0,0,0.85);border:1px solid #00ff41;padding:4px;z-index:90;font-size:9px;overflow:hidden;font-family:'Courier New',monospace;">
+  <div style="color:#ffaa00;text-align:center;margin-bottom:2px;font-size:10px;">-- TERMINAL --</div>
+  <div id="term-lines" style="overflow:hidden;height:130px;"></div>
+</div>
+
+<div id="dps-panel" style="position:fixed;bottom:60px;left:10px;width:150px;background:rgba(0,0,0,0.85);border:1px solid #00ff41;padding:6px;z-index:100;font-size:11px;">
+  <div style="color:#ffaa00;text-align:center;margin-bottom:4px;">DPS METER</div>
+  <div>DPS: <span id="dps-value" style="color:#ff4444;">0</span></div>
+  <div>Kills/s: <span id="kps-value" style="color:#00ffff;">0</span></div>
+  <div>Cr/s: <span id="cps-value" style="color:#ffaa00;">0</span></div>
 </div>
 
 <div class="item-tooltip" id="item-tooltip"></div>
@@ -520,18 +553,88 @@ const CANVAS_PAD_TOP = 40;
 const CANVAS_PAD_BOT = 40;
 const SPAWN_INTERVAL = 0.3;
 const ENEMY_TYPES = [
-  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10 },
-  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10 },
-  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30 },
-  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50 },
-  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20 },
+  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10, behavior: 'normal', color: '#00ff41' },
+  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10, behavior: 'swarm', color: '#66ff66' },
+  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30, behavior: 'guardian', color: '#4488ff' },
+  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50, behavior: 'regen', color: '#44ff88' },
+  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20, behavior: 'evader', color: '#ffff44' },
+  { tag: 'WORM', baseHp: 10, speed: 70, credits: 1, score: 5, behavior: 'swarm', color: '#88ff44' },
+  { tag: 'DAEMON', baseHp: 40, speed: 25, credits: 4, score: 25, behavior: 'teleport', color: '#aa44ff' },
+  { tag: 'SENTRY', baseHp: 60, speed: 5, credits: 6, score: 35, behavior: 'stationary', color: '#ff8844' },
 ];
 const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, credits: 30, score: 200, elite: true };
+
+// Elite mutations - random modifiers applied to elites
+const ELITE_MUTATIONS = [
+  { tag: 'SWIFT', color: '#00ffff', hpMult: 0.7, speedMult: 2.5, creditsMult: 1.5 },
+  { tag: 'ARMORED', color: '#888888', hpMult: 3.0, speedMult: 0.5, creditsMult: 2.0 },
+  { tag: 'SPLITTING', color: '#88ff00', hpMult: 0.8, speedMult: 1.2, creditsMult: 1.8, splits: true },
+  { tag: 'SHIELDED', color: '#4488ff', hpMult: 1.5, speedMult: 1.0, creditsMult: 2.0, shield: true },
+  { tag: 'BERSERKER', color: '#ff4444', hpMult: 1.2, speedMult: 1.0, creditsMult: 1.5, berserker: true },
+];
+
+// Boss definitions - appear at MapLv 10, 20, 30, etc.
+const BOSS_TYPES = [
+  { tag: 'KERNEL_ZERO', baseHp: 2000, speed: 8, credits: 200, score: 1000 },
+  { tag: 'ROOT_DAEMON', baseHp: 3000, speed: 6, credits: 300, score: 1500 },
+  { tag: 'VOID_PROXY', baseHp: 5000, speed: 12, credits: 500, score: 2500 },
+  { tag: 'OVERFLOW_GOD', baseHp: 8000, speed: 5, credits: 800, score: 4000 },
+  { tag: 'SINGULARITY', baseHp: 15000, speed: 4, credits: 1500, score: 8000 },
+];
 const RARITIES = ['common','uncommon','rare','epic','legendary','unique'];
 const RARITY_WEIGHTS = [50, 30, 14, 5, 1, 0.1];
 const RARITY_AFFIX_COUNT = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, unique: 5 };
 const ATTACK_SHAPES = ['circle', 'line', 'cone', 'nova', 'pierce-burst', 'lock-on'];
 const AUTO_MODES = ['nearest', 'chain', 'explode', 'orbit', 'parasite', 'drone'];
+
+// ---- ARCHETYPES ----
+const ARCHETYPES = {
+  speed: { label: 'SPEED', color: '#00ffff', desc: 'CD -5% per item' },
+  area:  { label: 'AREA',  color: '#ff8800', desc: 'Splash +10% per item' },
+  dot:   { label: 'DOT',   color: '#88ff00', desc: 'SUB ATK +8% per item' },
+};
+const CORE_SHAPE_ARCHETYPE = { line: 'speed', 'pierce-burst': 'speed', 'lock-on': 'speed', cone: 'area', nova: 'area', circle: 'area' };
+const SUB_MODE_ARCHETYPE = { nearest: 'speed', drone: 'speed', chain: 'dot', explode: 'dot', parasite: 'dot', orbit: 'area' };
+
+// Named unique items (templates)
+const NAMED_UNIQUES = [
+  {
+    name: 'Quicksilver Protocol', type: 'core', archetype: 'speed',
+    attackShape: 'pierce-burst',
+    baseAtk: 30, baseSplash: 30, baseCd: 0.15,
+    fixedAffixes: [
+      { id: 'pctCd', value: 15, label: (v) => `CD -${v}%` },
+      { id: 'critChance', value: 8, label: (v) => `CritChance +${v}%` },
+      { id: 'critDmg', value: 20, label: (v) => `CritDMG +${v}%` },
+      { id: 'flatAtk', value: 15, label: (v) => `ATK +${v}` },
+      { id: 'pctAtk', value: 10, label: (v) => `ATK +${v}%` },
+    ],
+  },
+  {
+    name: 'Cascade Engine', type: 'core', archetype: 'area',
+    attackShape: 'nova',
+    baseAtk: 18, baseSplash: 200, baseCd: 0.8,
+    fixedAffixes: [
+      { id: 'flatSplash', value: 30, label: (v) => `Splash +${v}` },
+      { id: 'pctAtk', value: 15, label: (v) => `ATK +${v}%` },
+      { id: 'dropRate', value: 5, label: (v) => `DropRate +${v}%` },
+      { id: 'flatAtk', value: 10, label: (v) => `ATK +${v}` },
+      { id: 'critDmg', value: 12, label: (v) => `CritDMG +${v}%` },
+    ],
+  },
+  {
+    name: 'Plague Vector', type: 'sub', archetype: 'dot',
+    autoMode: 'parasite',
+    baseAtk: 25,
+    fixedAffixes: [
+      { id: 'pctAtk', value: 20, label: (v) => `ATK +${v}%` },
+      { id: 'xpBonus', value: 10, label: (v) => `Credits +${v}%` },
+      { id: 'critDmg', value: 15, label: (v) => `CritDMG +${v}%` },
+      { id: 'critChance', value: 5, label: (v) => `CritChance +${v}%` },
+      { id: 'flatAtk', value: 12, label: (v) => `ATK +${v}` },
+    ],
+  },
+];
 const CORE_NAMES = [
   'Ping Flood','Port Scanner','SQL Injector','Buffer Overflow',
   'Zero-Day Exploit','Rootkit Launcher','Worm Deployer','Trojan Horse',
@@ -592,6 +695,22 @@ let state = {
   pendingExplosions: [],
   infections: [],
   drones: [],
+  bossActive: false,
+  bossSpawned: {}, // mapLv -> true
+  loadouts: [], // [{name, equipped: {cores, subs, modules}}]
+  // DPS tracking
+  dpsLog: [], // [{time, dmg}]
+  killLog: [], // [{time}]
+  creditLog: [], // [{time, amount}]
+  milestoneNext: 1000,
+  combo: 0,
+  comboTimer: 0,
+  maxCombo: 0,
+  mapKills: 0, // kills at current MapLv
+  autoAdvance: false,
+  achievements: {}, // id -> true
+  _forgeCount: 0,
+  _uniqueFound: false,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -788,7 +907,24 @@ function getComputedStats() {
   xpBonus = Math.min(5, xpBonus);                   // max +500% credits
   dropBonus = Math.min(3, dropBonus);                // max +300% drop rate
 
-  return { atk, splash, cd, critChance, critDmg, xpBonus, dropBonus, coreCount };
+  // ---- SYNERGY BONUSES ----
+  const synergyCounts = { speed: 0, area: 0, dot: 0 };
+  for (const item of allEquipped) {
+    if (item && item.archetype && synergyCounts[item.archetype] !== undefined) {
+      synergyCounts[item.archetype]++;
+    }
+  }
+  // SPEED: CD -5% per item, max -30%
+  const speedBonus = Math.min(6, synergyCounts.speed) * 0.05;
+  cd = cd * (1 - speedBonus);
+  cd = Math.max(0.15, Math.round(cd * 100) / 100);
+  // AREA: Splash +10% per item, max +60%
+  const areaBonus = Math.min(6, synergyCounts.area) * 0.10;
+  splash = Math.min(200, Math.floor(splash * (1 + areaBonus)));
+  // DOT: SUB ATK +8% per item, max +48% (stored as multiplier for sub damage)
+  const dotBonus = Math.min(6, synergyCounts.dot) * 0.08;
+
+  return { atk, splash, cd, critChance, critDmg, xpBonus, dropBonus, coreCount, synergyCounts, dotBonus };
 }
 
 // ---- ITEM GENERATION ----
@@ -820,6 +956,7 @@ function makeItem(rarity, mapLv) {
   if (itemType === 'core') {
     const baseName = CORE_NAMES[randInt(0, CORE_NAMES.length - 1)];
     const attackShape = ATTACK_SHAPES[randInt(0, ATTACK_SHAPES.length - 1)];
+    const archetype = CORE_SHAPE_ARCHETYPE[attackShape] || 'area';
     return {
       id: Date.now() + Math.random(),
       type: 'core',
@@ -830,10 +967,12 @@ function makeItem(rarity, mapLv) {
       cd: Math.round(Math.max(0.1, (0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) / uniqueMult) * 100) / 100,
       affixes,
       attackShape,
+      archetype,
     };
   } else if (itemType === 'sub') {
     const baseName = SUB_NAMES[randInt(0, SUB_NAMES.length - 1)];
     const autoMode = AUTO_MODES[randInt(0, AUTO_MODES.length - 1)];
+    const archetype = SUB_MODE_ARCHETYPE[autoMode] || 'speed';
     return {
       id: Date.now() + Math.random(),
       type: 'sub',
@@ -842,22 +981,67 @@ function makeItem(rarity, mapLv) {
       atk: Math.floor((4 + rarityIdx * 4 + randInt(0, 3)) * ilvScale * uniqueMult),
       affixes,
       autoMode,
+      archetype,
     };
   } else {
     const baseName = MODULE_NAMES[randInt(0, MODULE_NAMES.length - 1)];
+    const archetypeKeys = Object.keys(ARCHETYPES);
+    const archetype = archetypeKeys[randInt(0, archetypeKeys.length - 1)];
     return {
       id: Date.now() + Math.random(),
       type: 'module',
       name: baseName,
       rarity, ilv,
       affixes,
+      archetype,
     };
   }
 }
 
 // ---- ENEMY MANAGEMENT ----
+function spawnBoss() {
+  if (state.bossActive) return;
+  const bossIdx = Math.min(Math.floor((state.mapLv - 1) / 10), BOSS_TYPES.length - 1);
+  const tmpl = BOSS_TYPES[bossIdx];
+  const scaledHp = Math.floor(tmpl.baseHp * getEnemyHpMult());
+  const w = window.innerWidth, h = window.innerHeight;
+  const enemy = {
+    id: Date.now() + Math.random(),
+    tag: tmpl.tag,
+    hp: scaledHp, maxHp: scaledHp,
+    speed: tmpl.speed,
+    credits: tmpl.credits,
+    score: tmpl.score,
+    elite: true, boss: true,
+    x: w / 2, y: CANVAS_PAD_TOP + 80,
+    el: null, vx: 0, vy: 0, marked: false,
+  };
+  const el = document.createElement('div');
+  el.className = 'enemy elite';
+  el.innerHTML = `<div class="hitbox"></div><div class="label" style="color:#ff4444;font-size:18px;text-shadow:0 0 10px #ff4444;">[BOSS:${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill" style="background:#ff4444;"></div></div>`;
+  el.style.left = enemy.x + 'px';
+  el.style.top = enemy.y + 'px';
+  canvas.appendChild(el);
+  enemy.el = el;
+  enemy.labelEl = el.querySelector('.label');
+  enemy.hpFillEl = el.querySelector('.hp-fill');
+  enemy.hitboxEl = el.querySelector('.hitbox');
+  state.enemies.push(enemy);
+  state.bossActive = true;
+  showBanner('BOSS: ' + enemy.tag);
+  termLog('> WARNING: BOSS [' + enemy.tag + '] DETECTED', '#ff4444');
+  termLog('>   HP:' + enemy.maxHp + ' | Cr:' + enemy.credits, '#ff4444');
+}
+
 function spawnEnemy() {
   if (!state.running) return;
+
+  // Boss spawn at MapLv multiples of 10
+  if (state.mapLv >= 10 && state.mapLv % 10 === 0 && !state.bossSpawned[state.mapLv] && !state.bossActive) {
+    state.bossSpawned[state.mapLv] = true;
+    spawnBoss();
+  }
+
   const isElite = Math.random() < getEliteRate();
   const template = isElite ? ELITE_TYPE : ENEMY_TYPES[randInt(0, ENEMY_TYPES.length - 1)];
   const scaledHp = Math.floor(template.baseHp * getEnemyHpMult());
@@ -880,18 +1064,71 @@ function spawnEnemy() {
     credits: template.credits,
     score: template.score,
     elite: !!template.elite,
+    behavior: template.behavior || 'normal',
     x, y,
     el: null,
     vx: 0, vy: 0,
     marked: false,
+    mutation: null,
+    boss: false,
+    shield: 0,
+    splits: false,
+    berserker: false,
+    teleportCd: 0,
+    regenTimer: 0,
   };
+
+  // Apply mutation to elites (Corruption: multiple mutations at high MapLv)
+  if (enemy.elite) {
+    const mutChance = 0.6;
+    // Corruption: MapLv 50+ normal enemies also get mutations, elites get 2+
+    const corruptionLv = Math.max(0, Math.floor((state.mapLv - 50) / 10));
+    const maxMutations = Math.min(3, 1 + corruptionLv);
+    const applied = new Set();
+    for (let m = 0; m < maxMutations; m++) {
+      if (m === 0 ? Math.random() < mutChance : Math.random() < 0.3 * corruptionLv) {
+        const available = ELITE_MUTATIONS.filter((_, i) => !applied.has(i));
+        if (available.length === 0) break;
+        const idx = randInt(0, available.length - 1);
+        const mut = available[idx];
+        applied.add(ELITE_MUTATIONS.indexOf(mut));
+        if (m === 0) enemy.mutation = mut; // primary mutation for color
+        enemy.hp = Math.floor(enemy.hp * mut.hpMult);
+        enemy.maxHp = enemy.hp;
+        enemy.speed *= mut.speedMult;
+        enemy.credits = Math.floor(enemy.credits * mut.creditsMult);
+        enemy.tag = mut.tag + '_' + enemy.tag;
+        if (mut.shield) enemy.shield += Math.floor(enemy.maxHp * 0.3);
+        if (mut.splits) enemy.splits = true;
+        if (mut.berserker) enemy.berserker = true;
+      }
+    }
+  }
+  // Corruption: non-elites also get mutations at MapLv 75+
+  if (!enemy.elite && state.mapLv >= 75 && Math.random() < 0.2) {
+    const mut = ELITE_MUTATIONS[randInt(0, ELITE_MUTATIONS.length - 1)];
+    enemy.mutation = mut;
+    enemy.hp = Math.floor(enemy.hp * mut.hpMult);
+    enemy.maxHp = enemy.hp;
+    enemy.speed *= mut.speedMult;
+    enemy.credits = Math.floor(enemy.credits * mut.creditsMult);
+    enemy.tag = mut.tag + '_' + enemy.tag;
+    if (mut.shield) enemy.shield = Math.floor(enemy.maxHp * 0.3);
+    if (mut.splits) enemy.splits = true;
+    if (mut.berserker) enemy.berserker = true;
+  }
+
   const angle = Math.random() * Math.PI * 2;
   enemy.vx = Math.cos(angle) * enemy.speed;
   enemy.vy = Math.sin(angle) * enemy.speed;
 
+  const baseColor = template.color || '#00ff41';
+  const labelColor = enemy.mutation ? enemy.mutation.color : baseColor;
+  const mutColor = ` style="color:${labelColor}"`;
+  const shieldText = enemy.shield > 0 ? `[S:${enemy.shield}]` : '';
   const el = document.createElement('div');
   el.className = 'enemy' + (enemy.elite ? ' elite' : '');
-  el.innerHTML = `<div class="hitbox"></div><div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+  el.innerHTML = `<div class="hitbox"></div><div class="label"${mutColor}>${shieldText}[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   canvas.appendChild(el);
@@ -900,6 +1137,19 @@ function spawnEnemy() {
   enemy.hpFillEl = el.querySelector('.hp-fill');
   enemy.hitboxEl = el.querySelector('.hitbox');
   state.enemies.push(enemy);
+}
+
+// Apply damage respecting shield
+function applyDamage(enemy, dmg) {
+  if (enemy.shield > 0) {
+    if (dmg <= enemy.shield) {
+      enemy.shield -= dmg;
+      return;
+    }
+    dmg -= enemy.shield;
+    enemy.shield = 0;
+  }
+  enemy.hp -= dmg;
 }
 
 function removeEnemy(enemy) {
@@ -953,7 +1203,85 @@ function updateEnemies(dt) {
     }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
-    e.labelEl.textContent = e.marked ? `[!][${e.tag}:${e.hp}]` : `[${e.tag}:${e.hp}]`;
+    // Behavior-specific updates
+    switch (e.behavior) {
+      case 'evader': {
+        // Flee from cursor
+        const dx = e.x - state.mouseX, dy = e.y - state.mouseY;
+        const md = Math.hypot(dx, dy) || 1;
+        if (md < 200) {
+          e.vx += (dx / md) * 60 * dt;
+          e.vy += (dy / md) * 60 * dt;
+        }
+        break;
+      }
+      case 'guardian': {
+        // Shield nearby non-elite allies periodically
+        if (Math.random() < dt * 0.5) {
+          for (const other of state.enemies) {
+            if (other.id === e.id || other.elite) continue;
+            const d = dist(e.x, e.y, other.x, other.y);
+            if (d < 80 && other.shield <= 0) {
+              other.shield = Math.floor(other.maxHp * 0.15);
+              break;
+            }
+          }
+        }
+        break;
+      }
+      case 'regen': {
+        // Slowly regenerate HP
+        e.regenTimer = (e.regenTimer || 0) + dt;
+        if (e.regenTimer >= 1.0) {
+          e.regenTimer = 0;
+          e.hp = Math.min(e.maxHp, e.hp + Math.floor(e.maxHp * 0.05));
+        }
+        break;
+      }
+      case 'teleport': {
+        // Random short teleport
+        e.teleportCd = (e.teleportCd || 0) - dt;
+        if (e.teleportCd <= 0) {
+          e.teleportCd = 3 + Math.random() * 2;
+          e.x += rand(-100, 100);
+          e.y += rand(-80, 80);
+          e.x = Math.max(10, Math.min(w - 10, e.x));
+          e.y = Math.max(CANVAS_PAD_TOP + 10, Math.min(h - CANVAS_PAD_BOT - 10, e.y));
+        }
+        break;
+      }
+      case 'swarm': {
+        // Cluster toward other swarm enemies
+        for (const other of state.enemies) {
+          if (other.id === e.id || other.behavior !== 'swarm') continue;
+          const d = dist(e.x, e.y, other.x, other.y);
+          if (d > 30 && d < 120) {
+            e.vx += (other.x - e.x) / d * 15 * dt;
+            e.vy += (other.y - e.y) / d * 15 * dt;
+          }
+        }
+        break;
+      }
+      case 'stationary': {
+        // Barely moves, high resistance to pull
+        e.vx *= 0.9;
+        e.vy *= 0.9;
+        break;
+      }
+    }
+
+    // Berserker: speed increases as HP drops
+    if (e.berserker && e.hp < e.maxHp * 0.5) {
+      const rage = 1 + (1 - e.hp / e.maxHp) * 2;
+      const spd = Math.hypot(e.vx, e.vy);
+      if (spd > 0 && spd < e.speed * rage) {
+        e.vx *= 1.02;
+        e.vy *= 1.02;
+      }
+    }
+    const shieldText = e.shield > 0 ? `[S:${e.shield}]` : '';
+    const bossPrefix = e.boss ? 'BOSS:' : '';
+    e.labelEl.textContent = e.marked ? `[!]${shieldText}[${bossPrefix}${e.tag}:${e.hp}]` : `${shieldText}[${bossPrefix}${e.tag}:${e.hp}]`;
     const hpPct = Math.max(0, e.hp / e.maxHp * 100);
     e.hpFillEl.style.width = hpPct + '%';
   }
@@ -1051,7 +1379,7 @@ function attack(mx, my) {
             if (!state.enemies.includes(e)) return;
             const isCrit = Math.random() < stats.critChance;
             const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * allMult * mults[p]);
-            e.hp -= dmg;
+            applyDamage(e, dmg);
             showDamageNumber(e.x, e.y, dmg, isCrit, false, 'pierce-burst');
             if (e.hp <= 0) killEnemy(e, false);
           }, p * 50);
@@ -1068,7 +1396,7 @@ function attack(mx, my) {
         const isCrit = Math.random() < stats.critChance;
         const allMult = state.upgrades.allDmgMult || 1;
         const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * allMult);
-        e.hp -= dmg;
+        applyDamage(e, dmg);
         showDamageNumber(e.x, e.y, dmg, isCrit, false, core.attackShape);
         if (e.hp <= 0) toKill.add(e);
       }
@@ -1095,7 +1423,7 @@ function attack(mx, my) {
         e.labelEl.style.color = '';
         const isCrit = Math.random() < stats.critChance;
         const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * 1.5 * allMult);
-        e.hp -= dmg;
+        applyDamage(e, dmg);
         showDamageNumber(e.x, e.y, dmg, isCrit, false, 'lock-on');
         showAttackEffect(e.x, e.y, 'circle', 40, 0, e.x, e.y);
         if (e.hp <= 0) killEnemy(e, false);
@@ -1116,17 +1444,92 @@ function killEnemy(enemy, fromSub) {
   // Remove infections on this enemy (propagation handled in updateInfections)
   state.infections = state.infections.filter(inf => inf.enemyId !== enemy.id);
   playKillSound(enemy.tag);
+
+  // Boss death
+  if (enemy.boss) {
+    state.bossActive = false;
+    showBanner('BOSS DEFEATED');
+    screenShake(12, 500);
+    termLog('> BOSS [' + enemy.tag + '] TERMINATED', '#ff4444');
+  } else if (enemy.elite) {
+    screenShake(4, 200);
+    termLog('> ELITE [' + enemy.tag + '] destroyed', '#ffaa00');
+  } else if (Math.random() < 0.05) {
+    // Occasional log for normal kills
+    termLog('> [' + enemy.tag + '] neutralized');
+  }
+
+  // Splitting mutation: spawn 2 smaller enemies
+  if (enemy.splits && !enemy.splitChild) {
+    for (let i = 0; i < 2; i++) {
+      const child = {
+        id: Date.now() + Math.random() + i,
+        tag: enemy.tag.replace('SPLITTING_', ''),
+        hp: Math.floor(enemy.maxHp * 0.3),
+        maxHp: Math.floor(enemy.maxHp * 0.3),
+        speed: enemy.speed * 1.5,
+        credits: Math.floor(enemy.credits * 0.3),
+        score: Math.floor(enemy.score * 0.3),
+        elite: false, boss: false,
+        x: enemy.x + rand(-30, 30), y: enemy.y + rand(-30, 30),
+        el: null, vx: 0, vy: 0, marked: false,
+        mutation: null, shield: 0, splits: false, berserker: false, splitChild: true,
+      };
+      const a = Math.random() * Math.PI * 2;
+      child.vx = Math.cos(a) * child.speed;
+      child.vy = Math.sin(a) * child.speed;
+      const el = document.createElement('div');
+      el.className = 'enemy';
+      el.innerHTML = `<div class="hitbox"></div><div class="label">[${child.tag}:${child.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+      el.style.left = child.x + 'px';
+      el.style.top = child.y + 'px';
+      canvas.appendChild(el);
+      child.el = el;
+      child.labelEl = el.querySelector('.label');
+      child.hpFillEl = el.querySelector('.hp-fill');
+      child.hitboxEl = el.querySelector('.hitbox');
+      state.enemies.push(child);
+    }
+  }
   const mult = getScoreXpMult();
   const computed = getComputedStats();
   const creditMult = state.upgrades.creditMult * (1 + computed.xpBonus);
   state.score += Math.floor(enemy.score * mult);
   state.kills++;
-  state.credits += Math.floor(enemy.credits * mult * creditMult);
+  // Combo system
+  state.combo++;
+  state.comboTimer = 2.0; // 2 second window
+  if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+  const comboMult = 1 + Math.min(5, Math.floor(state.combo / 10)) * 0.1; // +10% per 10 kills, max +50%
+
+  const earnedCredits = Math.floor(enemy.credits * mult * creditMult * comboMult);
+  state.credits += earnedCredits;
+  logKill();
+  logCredits(earnedCredits);
+  checkMilestone();
+  state.mapKills++;
+  checkAutoAdvance();
+  showCreditNumber(enemy.x, enemy.y, earnedCredits);
 
   const baseDropChance = 0.15;
   const dropChance = baseDropChance * state.upgrades.dropMult * (1 + computed.dropBonus);
   if (Math.random() < dropChance || enemy.elite) {
     spawnDrop(enemy.x, enemy.y, enemy.elite);
+  }
+
+  // Boss: guaranteed named unique drop
+  if (enemy.boss) {
+    const tmpl = NAMED_UNIQUES[randInt(0, NAMED_UNIQUES.length - 1)];
+    spawnNamedUniqueDrop(enemy.x, enemy.y, tmpl, state.mapLv);
+  }
+  // Named unique drop from elites (2% chance each)
+  else if (enemy.elite) {
+    for (const tmpl of NAMED_UNIQUES) {
+      if (Math.random() < 0.02) {
+        spawnNamedUniqueDrop(enemy.x, enemy.y, tmpl, state.mapLv);
+        break;
+      }
+    }
   }
 
   // Check for explode subs
@@ -1183,6 +1586,34 @@ function showDamageNumber(x, y, dmg, crit, isSub, shape, subMode) {
   setTimeout(() => el.remove(), 800);
   if (!isSub) playHitSound(crit, shape);
   else if (subMode) playSubSound(subMode);
+  logDamage(dmg);
+}
+
+function screenShake(intensity, duration) {
+  const el = document.getElementById('game-canvas');
+  const start = performance.now();
+  function shake() {
+    const elapsed = performance.now() - start;
+    if (elapsed > duration) { el.style.transform = ''; return; }
+    const decay = 1 - elapsed / duration;
+    const dx = (Math.random() - 0.5) * intensity * decay * 2;
+    const dy = (Math.random() - 0.5) * intensity * decay * 2;
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(shake);
+  }
+  shake();
+}
+
+function showCreditNumber(x, y, amount) {
+  const el = document.createElement('div');
+  el.className = 'damage-number';
+  el.style.color = '#ffaa00';
+  el.style.fontSize = '12px';
+  el.textContent = '+' + amount + 'Cr';
+  el.style.left = (x + rand(10, 30)) + 'px';
+  el.style.top = (y + 5) + 'px';
+  canvas.appendChild(el);
+  setTimeout(() => el.remove(), 800);
 }
 
 function showSubEffect(x, y, symbol) {
@@ -1210,9 +1641,15 @@ function showChainLine(x1, y1, x2, y2) {
 }
 
 // ---- SUB AUTO-ATTACK ----
+function getSubDmgMult() {
+  const stats = getComputedStats();
+  return (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1) * (1 + (stats.dotBonus || 0));
+}
+
 function updateSubAttacks(dt) {
   if (state.paused || state.enemies.length === 0) return;
   const stats = getComputedStats();
+  const subMult = getSubDmgMult();
 
   for (let i = 0; i < 4; i++) {
     state.subCooldowns[i] = Math.max(0, state.subCooldowns[i] - dt);
@@ -1228,12 +1665,12 @@ function updateSubAttacks(dt) {
       const ox = state.mouseX + Math.cos(state.orbitAngles[i]) * 150;
       const oy = state.mouseY + Math.sin(state.orbitAngles[i]) * 150;
       // Damage enemies near orbit point (every tick)
-      const dps = sub.atk * 2 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1); // DPS
+      const dps = sub.atk * 2 * subMult; // DPS
       for (const e of state.enemies) {
         const ec = getEnemyCenter(e);
         if (dist(ec.x, ec.y, ox, oy) < 40) {
           const dmg = Math.max(1, Math.floor(dps * dt));
-          e.hp -= dmg;
+          applyDamage(e, dmg);
           if (Math.random() < 0.1) showDamageNumber(e.x, e.y, dmg, false, true, null, 'orbit');
           if (e.hp <= 0) {
             killEnemy(e, true);
@@ -1262,9 +1699,9 @@ function updateSubAttacks(dt) {
       case 'nearest': {
         const ec = getEnemyCenter(nearest);
         const isCrit = Math.random() < stats.critChance;
-        const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-        nearest.hp -= dmg;
+        applyDamage(nearest, dmg);
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
         showSubEffect(ec.x, ec.y, '>');
         if (nearest.hp <= 0) killEnemy(nearest, true);
@@ -1272,14 +1709,14 @@ function updateSubAttacks(dt) {
       }
       case 'chain': {
         let target = nearest;
-        let chainDmg = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        let chainDmg = sub.atk * subMult;
         const hit = new Set();
         for (let c = 0; c < 3 && target; c++) {
           const ec = getEnemyCenter(target);
           hit.add(target.id);
           const isCrit = Math.random() < stats.critChance;
           const dmg = isCrit ? Math.floor(chainDmg * stats.critDmg) : Math.floor(chainDmg);
-          target.hp -= dmg;
+          applyDamage(target, dmg);
           showDamageNumber(target.x, target.y, dmg, isCrit, true, null, 'chain');
           showSubEffect(ec.x, ec.y, '>');
 
@@ -1306,9 +1743,9 @@ function updateSubAttacks(dt) {
       case 'explode': {
         const ec = getEnemyCenter(nearest);
         const isCrit = Math.random() < stats.critChance;
-        const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+        const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-        nearest.hp -= dmg;
+        applyDamage(nearest, dmg);
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
         showSubEffect(ec.x, ec.y, '#');
         if (nearest.hp <= 0) killEnemy(nearest, false); // false to allow explode
@@ -1335,11 +1772,11 @@ function updateSubAttacks(dt) {
             }
           }
           if (target) {
-            const dmgPerSec = sub.atk * 0.3 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+            const dmgPerSec = sub.atk * 0.3 * subMult;
             state.infections.push({ enemyId: target.id, subIdx: i, dmgPerSec, ttl: 5 });
             playSubSound('parasite');
             const ec = getEnemyCenter(target);
-            showSubEffect(ec.x, ec.y, '☣');
+            showSubEffect(ec.x, ec.y, '[P]');
           }
         }
         break;
@@ -1350,16 +1787,68 @@ function updateSubAttacks(dt) {
   // Process pending explosions
   const explosions = state.pendingExplosions.splice(0);
   for (const exp of explosions) {
-    const explosionDmg = Math.floor(exp.atk * 0.5 * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1));
+    const explosionDmg = Math.floor(exp.atk * 0.5 * subMult);
     for (const e of [...state.enemies]) {
       const ec = getEnemyCenter(e);
-      if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
-        e.hp -= explosionDmg;
+      if (dist(ec.x, ec.y, exp.x, exp.y) < 120) {
+        applyDamage(e, explosionDmg);
         showDamageNumber(e.x, e.y, explosionDmg, false, true, null, 'explode');
         if (e.hp <= 0) killEnemy(e, true);
       }
     }
   }
+}
+
+// ---- NAMED UNIQUE GENERATION ----
+function makeNamedUnique(tmpl, mapLv) {
+  const ilv = mapLv;
+  const ilvScale = 1 + (ilv - 1) * 0.15;
+  const item = {
+    id: Date.now() + Math.random(),
+    type: tmpl.type,
+    name: tmpl.name,
+    rarity: 'unique',
+    ilv,
+    affixes: tmpl.fixedAffixes.map(a => ({ ...a })),
+    archetype: tmpl.archetype,
+    namedUnique: true,
+  };
+  if (tmpl.type === 'core') {
+    item.atk = Math.floor(tmpl.baseAtk * ilvScale * 1.5);
+    item.splash = Math.floor(tmpl.baseSplash * (1 + (ilv - 1) * 0.05) * 1.5);
+    item.cd = tmpl.baseCd;
+    item.attackShape = tmpl.attackShape;
+  } else if (tmpl.type === 'sub') {
+    item.atk = Math.floor(tmpl.baseAtk * ilvScale * 1.5);
+    item.autoMode = tmpl.autoMode;
+  }
+  return item;
+}
+
+function spawnNamedUniqueDrop(x, y, tmpl, mapLv) {
+  const item = makeNamedUnique(tmpl, mapLv);
+  const invKey = getInvKeyForType(item.type);
+  if (state.inventories[invKey].length >= MAX_INVENTORY) return;
+
+  const drop = {
+    id: item.id,
+    x: x + rand(-20, 20),
+    y: y + rand(-10, 10),
+    item,
+    ttl: 15, // longer TTL for named uniques
+    el: null,
+  };
+
+  const el = document.createElement('div');
+  el.className = 'drop unique';
+  const typeTag = item.type === 'core' ? 'C' : item.type === 'sub' ? 'S' : 'M';
+  el.textContent = `[${typeTag}:iL${item.ilv} ${item.name}]`;
+  el.style.left = drop.x + 'px';
+  el.style.top = drop.y + 'px';
+  el.addEventListener('mouseenter', () => { pickupDrop(drop); });
+  canvas.appendChild(el);
+  drop.el = el;
+  state.drops.push(drop);
 }
 
 // ---- DROPS ----
@@ -1425,6 +1914,7 @@ function pickupDrop(drop) {
   const invKey = getInvKeyForType(drop.item.type);
   if (state.inventories[invKey].length >= MAX_INVENTORY) return;
   playDropSound(drop.item.rarity);
+  if (drop.item.rarity === 'unique') state._uniqueFound = true;
   state.inventories[invKey].push(drop.item);
   if (drop.el) drop.el.remove();
   state.drops = state.drops.filter(d => d.id !== drop.id);
@@ -1467,6 +1957,7 @@ function equipItem(item) {
   }
   slots[emptyIdx] = item;
   playEquipSound();
+  termLog('> EQUIP: [iL' + item.ilv + '] ' + item.name, ARCHETYPES[item.archetype] ? ARCHETYPES[item.archetype].color : '#00ff41');
   const invKey = getInvKeyForType(item.type);
   state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
   if (item.type === 'sub') rebuildDrones();
@@ -1500,7 +1991,10 @@ function trashItem(item) {
 const tooltipEl = document.getElementById('item-tooltip');
 function showTooltip(item, ev) {
   let html = `<div class="tt-name">${item.name}</div>`;
-  html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}</div>`;
+  const archLabel = item.archetype && ARCHETYPES[item.archetype]
+    ? ` | <span style="color:${ARCHETYPES[item.archetype].color}">${ARCHETYPES[item.archetype].label}</span>`
+    : '';
+  html += `<div class="tt-type">${item.type.toUpperCase()} | iLv ${item.ilv} | ${item.rarity.toUpperCase()}${archLabel}</div>`;
   if (item.type === 'core') {
     html += `<div class="tt-stats">ATK: ${item.atk} | Splash: ${item.splash} | CD: ${item.cd}s</div>`;
     html += `<div class="tt-shape">Shape: ${(item.attackShape || 'circle').toUpperCase()}</div>`;
@@ -1572,6 +2066,10 @@ function renderInventory() {
   addAutoEquipBtn('inv-page-core', 'core');
   addAutoEquipBtn('inv-page-sub', 'sub');
   addAutoEquipBtn('inv-page-mod', 'module');
+
+  // Render forge options & loadouts
+  renderForge();
+  renderLoadouts();
 }
 
 function addAutoEquipBtn(containerId, type) {
@@ -1633,7 +2131,7 @@ function renderInvSection(type, items, listId, pageId, countId, pageKey) {
     const item = items[i];
     const row = document.createElement('div');
     row.className = 'inv-item ' + item.rarity;
-    row.innerHTML = `<span class="inv-name">[iL${item.ilv}] ${item.name}</span><span class="inv-trash">✕</span>`;
+    row.innerHTML = `<span class="inv-name">[iL${item.ilv}] ${item.name}</span><span class="inv-trash">x</span>`;
     row.querySelector('.inv-name').addEventListener('click', (ev) => { ev.stopPropagation(); equipItem(item); });
     row.querySelector('.inv-trash').addEventListener('click', (ev) => { ev.stopPropagation(); trashItem(item); });
     row.addEventListener('mouseenter', (ev) => showTooltip(item, ev));
@@ -1721,6 +2219,14 @@ function updateHUD() {
   document.getElementById('hud-credits').textContent = state.credits;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
+  const comboEl = document.getElementById('hud-combo');
+  if (state.combo >= 5) {
+    const comboMult = 1 + Math.min(5, Math.floor(state.combo / 10)) * 0.1;
+    comboEl.textContent = `COMBO:${state.combo}` + (comboMult > 1 ? ` x${comboMult.toFixed(1)}` : '');
+    comboEl.style.opacity = Math.min(1, state.comboTimer);
+  } else {
+    comboEl.textContent = '';
+  }
 
   const stats = getComputedStats();
   document.getElementById('hud-cores').textContent = stats.coreCount;
@@ -1735,6 +2241,29 @@ function updateHUD() {
   const critDmgEl = document.getElementById('hud-critdmg');
   critDmgEl.textContent = stats.critDmg.toFixed(1);
   critDmgEl.style.color = stats.critDmg >= 10 ? '#ffaa00' : '';
+
+  // Synergy display
+  const synEl = document.getElementById('hud-synergy');
+  const synParts = [];
+  if (stats.synergyCounts) {
+    for (const [key, count] of Object.entries(stats.synergyCounts)) {
+      if (count >= 2) {
+        const arch = ARCHETYPES[key];
+        synParts.push(`<span style="color:${arch.color}">${arch.label}(${count})</span>`);
+      }
+    }
+  }
+  synEl.innerHTML = synParts.length > 0 ? 'SYN:' + synParts.join(' ') : '';
+
+  // Corruption indicator
+  const corrEl = document.getElementById('hud-corruption');
+  if (state.mapLv >= 50) {
+    const corrLv = Math.floor((state.mapLv - 50) / 10);
+    corrEl.innerHTML = `<span style="color:#ff0066;">CORRUPTION:${corrLv}</span>`;
+  } else {
+    corrEl.innerHTML = '';
+  }
+
   updateCrosshair();
 }
 
@@ -1774,7 +2303,7 @@ function updateInfections(dt) {
     const enemy = state.enemies.find(e => e.id === inf.enemyId);
     if (!enemy) { state.infections.splice(i, 1); continue; }
     const dmg = Math.max(1, Math.floor(inf.dmgPerSec * dt));
-    enemy.hp -= dmg;
+    applyDamage(enemy, dmg);
     if (Math.random() < dt * 2) showDamageNumber(enemy.x, enemy.y, dmg, false, true, null, 'parasite');
     if (enemy.hp <= 0) {
       // Propagate before kill
@@ -1792,7 +2321,7 @@ function updateInfections(dt) {
         if (myCount <= 3) { // will be reduced by 1 after splice
           state.infections.push({ enemyId: closest.id, subIdx: inf.subIdx, dmgPerSec: inf.dmgPerSec, ttl: 5 });
           const cec = getEnemyCenter(closest);
-          showSubEffect(cec.x, cec.y, '☣');
+          showSubEffect(cec.x, cec.y, '[P]');
           playSubSound('parasite');
         }
       }
@@ -1841,10 +2370,10 @@ function updateDrones(dt) {
     if (nearest) {
       const sub = state.equipped.subs[d.subIdx];
       if (!sub) continue;
-      const subBase = sub.atk * (state.upgrades.subAtkMult || 1) * (state.upgrades.allDmgMult || 1);
+      const subBase = sub.atk * getSubDmgMult();
       const isCrit = Math.random() < stats.critChance;
       const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-      nearest.hp -= dmg;
+      applyDamage(nearest, dmg);
       showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, 'drone');
       const ec = getEnemyCenter(nearest);
       showSubEffect(ec.x, ec.y, '·');
@@ -1855,8 +2384,283 @@ function updateDrones(dt) {
   }
 }
 
+// ---- BULK SELL ----
+function bulkSell() {
+  let totalSold = 0;
+  for (const key of ['cores', 'subs', 'modules']) {
+    const kept = [];
+    for (const item of state.inventories[key]) {
+      if (shouldAutoSell(item)) {
+        autoSellItem(item);
+        totalSold++;
+      } else {
+        kept.push(item);
+      }
+    }
+    state.inventories[key] = kept;
+  }
+  if (totalSold > 0) showBanner('SOLD ' + totalSold + ' ITEMS');
+  renderInventory();
+  updateHUD();
+}
+
+// ---- LOADOUT SYSTEM ----
+function saveLoadout() {
+  const nameEl = document.getElementById('loadout-name');
+  const name = nameEl.value.trim() || ('Build ' + (state.loadouts.length + 1));
+  const snapshot = {
+    name,
+    equipped: {
+      cores: state.equipped.cores.map(i => i ? i.id : null),
+      subs: state.equipped.subs.map(i => i ? i.id : null),
+      modules: state.equipped.modules.map(i => i ? i.id : null),
+    },
+    // Store full item data for restoration
+    items: [...state.equipped.cores, ...state.equipped.subs, ...state.equipped.modules].filter(Boolean).map(i => ({...i})),
+  };
+  // Replace if same name exists
+  state.loadouts = state.loadouts.filter(l => l.name !== name);
+  state.loadouts.push(snapshot);
+  if (state.loadouts.length > 5) state.loadouts.shift(); // max 5
+  nameEl.value = '';
+  renderLoadouts();
+  saveGame();
+  showBanner('LOADOUT SAVED: ' + name);
+}
+
+function applyLoadout(loadout) {
+  // Unequip all to inventory first
+  for (const type of ['cores', 'subs', 'modules']) {
+    for (let i = 0; i < 4; i++) {
+      if (state.equipped[type][i]) {
+        const invKey = type;
+        if (state.inventories[invKey].length < MAX_INVENTORY) {
+          state.inventories[invKey].push(state.equipped[type][i]);
+        }
+        state.equipped[type][i] = null;
+      }
+    }
+  }
+  // Re-equip from loadout
+  for (const type of ['cores', 'subs', 'modules']) {
+    for (let i = 0; i < 4; i++) {
+      const targetId = loadout.equipped[type][i];
+      if (!targetId) continue;
+      const invKey = type;
+      const idx = state.inventories[invKey].findIndex(item => item.id === targetId);
+      if (idx !== -1) {
+        state.equipped[type][i] = state.inventories[invKey][idx];
+        state.inventories[invKey].splice(idx, 1);
+      }
+    }
+  }
+  rebuildDrones();
+  renderInventory();
+  updateHUD();
+  playEquipSound();
+  showBanner('LOADOUT: ' + loadout.name);
+}
+
+function deleteLoadout(name) {
+  state.loadouts = state.loadouts.filter(l => l.name !== name);
+  renderLoadouts();
+  saveGame();
+}
+
+function renderLoadouts() {
+  const container = document.getElementById('loadout-list');
+  container.innerHTML = '';
+  for (const lo of state.loadouts) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:2px 0;font-size:10px;';
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'color:#00ffff;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nameSpan.textContent = lo.name;
+    nameSpan.addEventListener('click', (ev) => { ev.stopPropagation(); applyLoadout(lo); });
+    const delBtn = document.createElement('span');
+    delBtn.style.cssText = 'color:#ff4444;cursor:pointer;margin-left:4px;';
+    delBtn.textContent = 'x';
+    delBtn.addEventListener('click', (ev) => { ev.stopPropagation(); deleteLoadout(lo.name); });
+    row.appendChild(nameSpan);
+    row.appendChild(delBtn);
+    container.appendChild(row);
+  }
+}
+
+// ---- FORGE SYSTEM ----
+function getForgeOptions() {
+  const options = [];
+  for (const invKey of ['cores', 'subs', 'modules']) {
+    const items = state.inventories[invKey];
+    // Group by archetype + rarity
+    const groups = {};
+    for (const item of items) {
+      if (!item.archetype) continue;
+      if (item.rarity === 'unique') continue; // can't forge uniques
+      const key = `${item.archetype}|${item.rarity}|${invKey}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    for (const [key, group] of Object.entries(groups)) {
+      if (group.length >= 3) {
+        const [archetype, rarity, type] = key.split('|');
+        const rarityIdx = RARITIES.indexOf(rarity);
+        if (rarityIdx < RARITIES.length - 2) { // can't forge to unique via forge
+          options.push({
+            archetype, rarity, type,
+            nextRarity: RARITIES[rarityIdx + 1],
+            items: group,
+          });
+        }
+      }
+    }
+  }
+  return options;
+}
+
+function forgeItems(option) {
+  // Consume first 3 items
+  const toConsume = option.items.slice(0, 3);
+  const invKey = option.type;
+  for (const item of toConsume) {
+    state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
+  }
+  // Generate new item of next rarity with matching archetype
+  const avgIlv = Math.floor(toConsume.reduce((s, i) => s + i.ilv, 0) / 3);
+  const newItem = makeItem(option.nextRarity, avgIlv);
+  newItem.archetype = option.archetype; // force archetype match
+  state.inventories[invKey].push(newItem);
+  state._forgeCount = (state._forgeCount || 0) + 1;
+  playEquipSound();
+  showBanner('FORGED: ' + newItem.name);
+  termLog('> FORGE: ' + option.nextRarity + ' [iL' + newItem.ilv + '] ' + newItem.name, '#ffaa00');
+  renderInventory();
+  updateHUD();
+}
+
+function renderForge() {
+  const container = document.getElementById('forge-options');
+  container.innerHTML = '';
+  const options = getForgeOptions();
+  if (options.length === 0) {
+    container.innerHTML = '<div style="color:#555;font-size:10px;">No forge available</div>';
+    return;
+  }
+  for (const opt of options) {
+    const arch = ARCHETYPES[opt.archetype];
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-btn';
+    btn.style.width = '100%';
+    btn.style.marginBottom = '2px';
+    btn.style.fontSize = '10px';
+    btn.innerHTML = `<span style="color:${arch.color}">${arch.label}</span> ${opt.rarity} x3 -> ${opt.nextRarity}`;
+    btn.addEventListener('click', (ev) => { ev.stopPropagation(); forgeItems(opt); });
+    btn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    container.appendChild(btn);
+  }
+}
+
+// ---- DPS TRACKING ----
+function logDamage(dmg) {
+  state.dpsLog.push({ time: performance.now(), dmg });
+}
+function logKill() {
+  state.killLog.push({ time: performance.now() });
+}
+function logCredits(amount) {
+  state.creditLog.push({ time: performance.now(), amount });
+}
+
+function updateDpsPanel() {
+  const now = performance.now();
+  const window5s = 5000;
+  state.dpsLog = state.dpsLog.filter(e => now - e.time < window5s);
+  state.killLog = state.killLog.filter(e => now - e.time < window5s);
+  state.creditLog = state.creditLog.filter(e => now - e.time < window5s);
+
+  const totalDmg = state.dpsLog.reduce((s, e) => s + e.dmg, 0);
+  const dps = Math.floor(totalDmg / (window5s / 1000));
+  const kps = (state.killLog.length / (window5s / 1000)).toFixed(1);
+  const totalCr = state.creditLog.reduce((s, e) => s + e.amount, 0);
+  const cps = Math.floor(totalCr / (window5s / 1000));
+
+  document.getElementById('dps-value').textContent = dps;
+  document.getElementById('kps-value').textContent = kps;
+  document.getElementById('cps-value').textContent = cps;
+}
+
+// ---- ACHIEVEMENTS ----
+const ACHIEVEMENTS = [
+  { id: 'kill100', name: 'First Blood x100', desc: 'Kill 100 enemies', check: () => state.kills >= 100, reward: 50 },
+  { id: 'kill1000', name: 'Massacre', desc: 'Kill 1,000 enemies', check: () => state.kills >= 1000, reward: 500 },
+  { id: 'kill10000', name: 'Genocide Protocol', desc: 'Kill 10,000 enemies', check: () => state.kills >= 10000, reward: 5000 },
+  { id: 'maplv10', name: 'Deep Scan', desc: 'Reach MapLv 10', check: () => state.mapLv >= 10, reward: 100 },
+  { id: 'maplv50', name: 'Core Breach', desc: 'Reach MapLv 50', check: () => state.mapLv >= 50, reward: 1000 },
+  { id: 'maplv100', name: 'Root Access', desc: 'Reach MapLv 100', check: () => state.mapLv >= 100, reward: 10000 },
+  { id: 'combo50', name: 'Chain Reaction', desc: 'Reach 50 combo', check: () => state.maxCombo >= 50, reward: 200 },
+  { id: 'combo100', name: 'Unstoppable', desc: 'Reach 100 combo', check: () => state.maxCombo >= 100, reward: 1000 },
+  { id: 'boss1', name: 'Boss Hunter', desc: 'Defeat a boss', check: () => Object.keys(state.bossSpawned).some(k => state.bossSpawned[k]), reward: 300 },
+  { id: 'forge1', name: 'Blacksmith', desc: 'Forge an item', check: () => state._forgeCount >= 1, reward: 100 },
+  { id: 'unique1', name: 'Jackpot', desc: 'Find a unique item', check: () => state._uniqueFound, reward: 500 },
+  { id: 'full12', name: 'Fully Loaded', desc: 'Fill all 12 equipment slots', check: () => {
+    return [...state.equipped.cores, ...state.equipped.subs, ...state.equipped.modules].every(i => i !== null);
+  }, reward: 200 },
+];
+
+function checkAchievements() {
+  for (const ach of ACHIEVEMENTS) {
+    if (state.achievements[ach.id]) continue;
+    if (ach.check()) {
+      state.achievements[ach.id] = true;
+      state.credits += ach.reward;
+      showBanner('ACHIEVEMENT: ' + ach.name);
+      termLog('> ACHIEVEMENT: ' + ach.name + ' [+' + ach.reward + 'Cr]', '#ffaa00');
+      playNote(523, 'sine', 0.06, 0.1);
+      setTimeout(() => playNote(659, 'sine', 0.06, 0.1), 100);
+      setTimeout(() => playNote(784, 'sine', 0.06, 0.15), 200);
+    }
+  }
+}
+
+// ---- TERMINAL LOG ----
+const TERM_MAX_LINES = 12;
+let termLines = [];
+function termLog(text, color) {
+  color = color || '#00ff41';
+  termLines.push({ text, color });
+  if (termLines.length > TERM_MAX_LINES) termLines.shift();
+  const container = document.getElementById('term-lines');
+  if (!container) return;
+  container.innerHTML = termLines.map(l =>
+    `<div style="color:${l.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l.text}</div>`
+  ).join('');
+}
+
+// ---- AUTO ADVANCE ----
+function checkAutoAdvance() {
+  if (!state.autoAdvance) return;
+  const threshold = 50 + state.mapLv * 10; // scales with MapLv
+  if (state.mapKills >= threshold && state.mapLv < 999) {
+    state.mapLv++;
+    state.mapKills = 0;
+    document.getElementById('maplv-select').value = state.mapLv;
+    showBanner('MAP LV ' + state.mapLv);
+    termLog('> SYSTEM: MapLv -> ' + state.mapLv, '#00ffff');
+  }
+}
+
+// ---- MILESTONES ----
+function checkMilestone() {
+  if (state.score >= state.milestoneNext) {
+    showBanner('MILESTONE: ' + state.milestoneNext + ' SCORE');
+    // Next milestone doubles
+    state.milestoneNext = state.milestoneNext * 2;
+  }
+}
+
 // ---- MAIN LOOP ----
 let lastTime = 0;
+let dpsUpdateTimer = 0;
 function gameLoop(timestamp) {
   if (!state.running) return;
   const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
@@ -1883,8 +2687,16 @@ function gameLoop(timestamp) {
     updateOrbitVisuals();
     updateInfections(dt);
     updateDrones(dt);
+
+    // Combo timer
+    if (state.comboTimer > 0) {
+      state.comboTimer -= dt;
+      if (state.comboTimer <= 0) state.combo = 0;
+    }
   }
 
+  dpsUpdateTimer += dt;
+  if (dpsUpdateTimer > 0.5) { dpsUpdateTimer = 0; updateDpsPanel(); checkAchievements(); }
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
@@ -1962,6 +2774,7 @@ mapLvSelect.value = state.mapLv;
 mapLvSelect.addEventListener('change', (ev) => {
   ev.stopPropagation();
   state.mapLv = parseInt(mapLvSelect.value);
+  state.mapKills = 0;
   clearAllEnemies();
   const initial = Math.min(getMaxEnemies(), getMaxEnemies());
   for (let i = 0; i < initial; i++) spawnEnemy();
@@ -1998,6 +2811,10 @@ function saveGame() {
     upgrades: state.upgrades,
     skillLevels: state.skillLevels,
     autoSellFilter: state.autoSellFilter,
+    loadouts: state.loadouts,
+    achievements: state.achievements,
+    _forgeCount: state._forgeCount,
+    _uniqueFound: state._uniqueFound,
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
@@ -2017,6 +2834,10 @@ function loadGame() {
     state.upgrades = data.upgrades || state.upgrades;
     state.skillLevels = data.skillLevels || {};
     state.autoSellFilter = data.autoSellFilter || { minIlv: 0, minRarity: 'common' };
+    state.loadouts = data.loadouts || [];
+    state.achievements = data.achievements || {};
+    state._forgeCount = data._forgeCount || 0;
+    state._uniqueFound = data._uniqueFound || false;
     // Ensure new upgrade fields exist
     if (!state.upgrades.allDmgMult) state.upgrades.allDmgMult = 1;
     if (!state.upgrades.subAtkMult) state.upgrades.subAtkMult = 1;
@@ -2053,6 +2874,14 @@ function syncAutoSellUI() {
   document.getElementById('autosell-rarity').value = state.autoSellFilter.minRarity;
 }
 
+// Auto advance checkbox
+document.getElementById('auto-advance').addEventListener('change', (ev) => {
+  ev.stopPropagation();
+  state.autoAdvance = ev.target.checked;
+  state.mapKills = 0;
+});
+document.getElementById('auto-advance').addEventListener('mousedown', (ev) => ev.stopPropagation());
+
 function init() {
   const loaded = loadGame();
   if (!loaded) {
@@ -2067,10 +2896,14 @@ function init() {
       cd: 0.5,
       affixes: [],
       attackShape: 'circle',
+      archetype: 'area',
     };
   }
   state.running = true;
   lastTime = performance.now();
+  termLog('> HACK.SIM v2.0 initialized');
+  termLog('> MapLv: ' + state.mapLv + ' | Credits: ' + state.credits);
+  termLog('> System ready. Begin scan...');
   const initial = Math.min(getMaxEnemies(), 12);
   for (let i = 0; i < initial; i++) spawnEnemy();
   syncAutoSellUI();
