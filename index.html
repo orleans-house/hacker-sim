@@ -1712,7 +1712,7 @@ function updateSubAttacks(dt) {
     const explosionDmg = Math.floor(exp.atk * 0.5 * subMult);
     for (const e of [...state.enemies]) {
       const ec = getEnemyCenter(e);
-      if (dist(ec.x, ec.y, exp.x + 35, exp.y + 10) < 120) {
+      if (dist(ec.x, ec.y, exp.x, exp.y) < 120) {
         applyDamage(e, explosionDmg);
         showDamageNumber(e.x, e.y, explosionDmg, false, true, null, 'explode');
         if (e.hp <= 0) killEnemy(e, true);
