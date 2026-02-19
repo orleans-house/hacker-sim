@@ -482,6 +482,12 @@ body {
     <div id="inv-list-mod"></div>
     <div class="inv-page-controls" id="inv-page-mod"></div>
   </div>
+  <hr class="inv-separator">
+  <div class="equip-section">
+    <div class="section-title" style="color:#ffaa00;">── FORGE ──</div>
+    <div style="font-size:10px;color:#888;margin-bottom:4px;">3 same-type + same-archetype = 1 higher rarity</div>
+    <div id="forge-options"></div>
+  </div>
 </div>
 
 <div id="game-canvas"></div>
@@ -1886,6 +1892,9 @@ function renderInventory() {
   addAutoEquipBtn('inv-page-core', 'core');
   addAutoEquipBtn('inv-page-sub', 'sub');
   addAutoEquipBtn('inv-page-mod', 'module');
+
+  // Render forge options
+  renderForge();
 }
 
 function addAutoEquipBtn(containerId, type) {
@@ -2201,6 +2210,77 @@ function bulkSell() {
   if (totalSold > 0) showBanner('SOLD ' + totalSold + ' ITEMS');
   renderInventory();
   updateHUD();
+}
+
+// ---- FORGE SYSTEM ----
+function getForgeOptions() {
+  const options = [];
+  for (const invKey of ['cores', 'subs', 'modules']) {
+    const items = state.inventories[invKey];
+    // Group by archetype + rarity
+    const groups = {};
+    for (const item of items) {
+      if (!item.archetype) continue;
+      if (item.rarity === 'unique') continue; // can't forge uniques
+      const key = `${item.archetype}|${item.rarity}|${invKey}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    for (const [key, group] of Object.entries(groups)) {
+      if (group.length >= 3) {
+        const [archetype, rarity, type] = key.split('|');
+        const rarityIdx = RARITIES.indexOf(rarity);
+        if (rarityIdx < RARITIES.length - 2) { // can't forge to unique via forge
+          options.push({
+            archetype, rarity, type,
+            nextRarity: RARITIES[rarityIdx + 1],
+            items: group,
+          });
+        }
+      }
+    }
+  }
+  return options;
+}
+
+function forgeItems(option) {
+  // Consume first 3 items
+  const toConsume = option.items.slice(0, 3);
+  const invKey = option.type;
+  for (const item of toConsume) {
+    state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
+  }
+  // Generate new item of next rarity with matching archetype
+  const avgIlv = Math.floor(toConsume.reduce((s, i) => s + i.ilv, 0) / 3);
+  const newItem = makeItem(option.nextRarity, avgIlv);
+  newItem.archetype = option.archetype; // force archetype match
+  state.inventories[invKey].push(newItem);
+  playEquipSound();
+  showBanner('FORGED: ' + newItem.name);
+  renderInventory();
+  updateHUD();
+}
+
+function renderForge() {
+  const container = document.getElementById('forge-options');
+  container.innerHTML = '';
+  const options = getForgeOptions();
+  if (options.length === 0) {
+    container.innerHTML = '<div style="color:#555;font-size:10px;">No forge available</div>';
+    return;
+  }
+  for (const opt of options) {
+    const arch = ARCHETYPES[opt.archetype];
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-btn';
+    btn.style.width = '100%';
+    btn.style.marginBottom = '2px';
+    btn.style.fontSize = '10px';
+    btn.innerHTML = `<span style="color:${arch.color}">${arch.label}</span> ${opt.rarity} x3 -> ${opt.nextRarity}`;
+    btn.addEventListener('click', (ev) => { ev.stopPropagation(); forgeItems(opt); });
+    btn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    container.appendChild(btn);
+  }
 }
 
 // ---- DPS TRACKING ----
