@@ -1365,6 +1365,7 @@ function killEnemy(enemy, fromSub) {
   logKill();
   logCredits(earnedCredits);
   checkMilestone();
+  showCreditNumber(enemy.x, enemy.y, earnedCredits);
 
   const baseDropChance = 0.15;
   const dropChance = baseDropChance * state.upgrades.dropMult * (1 + computed.dropBonus);
@@ -1442,6 +1443,18 @@ function showDamageNumber(x, y, dmg, crit, isSub, shape, subMode) {
   if (!isSub) playHitSound(crit, shape);
   else if (subMode) playSubSound(subMode);
   logDamage(dmg);
+}
+
+function showCreditNumber(x, y, amount) {
+  const el = document.createElement('div');
+  el.className = 'damage-number';
+  el.style.color = '#ffaa00';
+  el.style.fontSize = '12px';
+  el.textContent = '+' + amount + 'Cr';
+  el.style.left = (x + rand(10, 30)) + 'px';
+  el.style.top = (y + 5) + 'px';
+  canvas.appendChild(el);
+  setTimeout(() => el.remove(), 800);
 }
 
 function showSubEffect(x, y, symbol) {
