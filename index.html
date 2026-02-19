@@ -38,21 +38,15 @@ body {
   align-items: center;
   gap: 4px;
 }
-.maplv-btn {
-  background: none;
+#maplv-select {
+  background: #0a0a0a;
   border: 1px solid #00ff41;
   color: #00ff41;
   font-family: 'Courier New', monospace;
-  font-size: 14px;
-  width: 24px;
-  height: 24px;
+  font-size: 13px;
+  padding: 2px 4px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
 }
-.maplv-btn:hover { background: rgba(0,255,65,0.2); }
 
 /* Bottom HUD */
 #bottom-hud {
@@ -416,9 +410,7 @@ body {
 <div id="hud">
   <div>HACK.SIM</div>
   <div class="maplv-control">
-    MapLv:<span id="hud-maplv">1</span>
-    <button class="maplv-btn" id="maplv-down">[-]</button>
-    <button class="maplv-btn" id="maplv-up">[+]</button>
+    MapLv:<select id="maplv-select"></select>
   </div>
   <div>CREDITS: <span id="hud-credits">0</span></div>
   <div>SCORE: <span id="hud-score">0</span></div>
@@ -1376,7 +1368,7 @@ function renderUpgradePanel() {
 
 // ---- HUD ----
 function updateHUD() {
-  document.getElementById('hud-maplv').textContent = state.mapLv;
+  document.getElementById('maplv-select').value = state.mapLv;
   document.getElementById('hud-credits').textContent = state.credits;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
@@ -1472,18 +1464,34 @@ document.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseDown = false;
 });
 
-document.getElementById('maplv-up').addEventListener('click', (ev) => {
+// Populate MapLv select (1-100)
+const mapLvSelect = document.getElementById('maplv-select');
+for (let i = 1; i <= 100; i++) {
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = i;
+  mapLvSelect.appendChild(opt);
+}
+mapLvSelect.value = state.mapLv;
+mapLvSelect.addEventListener('change', (ev) => {
   ev.stopPropagation();
-  state.mapLv++;
+  state.mapLv = parseInt(mapLvSelect.value);
+  clearAllEnemies();
   updateHUD();
 });
-document.getElementById('maplv-down').addEventListener('click', (ev) => {
-  ev.stopPropagation();
-  if (state.mapLv > 1) state.mapLv--;
-  updateHUD();
-});
-document.getElementById('maplv-up').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
-document.getElementById('maplv-down').addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
+mapLvSelect.addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
+
+function clearAllEnemies() {
+  for (const e of state.enemies) {
+    if (e.el) e.el.remove();
+  }
+  state.enemies = [];
+  // Also clear ground drops
+  for (const d of state.drops) {
+    if (d.el) d.el.remove();
+  }
+  state.drops = [];
+}
 
 // ---- START ----
 function init() {
