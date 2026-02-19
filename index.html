@@ -448,7 +448,7 @@ body {
   <div>CORES: <span id="hud-cores">1</span>/4</div>
   <div>ATK: <span id="hud-atk">10</span> | SPLASH: <span id="hud-splash">50</span> | CD: <span id="hud-cd">0.50</span>s</div>
   <div>CRIT: <span id="hud-crit">5</span>% x<span id="hud-critdmg">2.0</span></div>
-  <div>KILLS: <span id="hud-kills">0</span></div>
+  <div>KILLS: <span id="hud-kills">0</span> | <span id="hud-combo" style="color:#ff66aa;"></span></div>
   <div id="hud-synergy"></div>
   <div id="hud-corruption"></div>
 </div>
@@ -694,6 +694,9 @@ let state = {
   killLog: [], // [{time}]
   creditLog: [], // [{time, amount}]
   milestoneNext: 1000,
+  combo: 0,
+  comboTimer: 0,
+  maxCombo: 0,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -1400,7 +1403,13 @@ function killEnemy(enemy, fromSub) {
   const creditMult = state.upgrades.creditMult * (1 + computed.xpBonus);
   state.score += Math.floor(enemy.score * mult);
   state.kills++;
-  const earnedCredits = Math.floor(enemy.credits * mult * creditMult);
+  // Combo system
+  state.combo++;
+  state.comboTimer = 2.0; // 2 second window
+  if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+  const comboMult = 1 + Math.min(5, Math.floor(state.combo / 10)) * 0.1; // +10% per 10 kills, max +50%
+
+  const earnedCredits = Math.floor(enemy.credits * mult * creditMult * comboMult);
   state.credits += earnedCredits;
   logKill();
   logCredits(earnedCredits);
@@ -2113,6 +2122,14 @@ function updateHUD() {
   document.getElementById('hud-credits').textContent = state.credits;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-kills').textContent = state.kills;
+  const comboEl = document.getElementById('hud-combo');
+  if (state.combo >= 5) {
+    const comboMult = 1 + Math.min(5, Math.floor(state.combo / 10)) * 0.1;
+    comboEl.textContent = `COMBO:${state.combo}` + (comboMult > 1 ? ` x${comboMult.toFixed(1)}` : '');
+    comboEl.style.opacity = Math.min(1, state.comboTimer);
+  } else {
+    comboEl.textContent = '';
+  }
 
   const stats = getComputedStats();
   document.getElementById('hud-cores').textContent = stats.coreCount;
@@ -2511,6 +2528,12 @@ function gameLoop(timestamp) {
     updateOrbitVisuals();
     updateInfections(dt);
     updateDrones(dt);
+
+    // Combo timer
+    if (state.comboTimer > 0) {
+      state.comboTimer -= dt;
+      if (state.comboTimer <= 0) state.combo = 0;
+    }
   }
 
   dpsUpdateTimer += dt;
