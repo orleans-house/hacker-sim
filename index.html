@@ -615,26 +615,33 @@ function updateEnemies(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   for (const e of state.enemies) {
-    const cx = w / 2;
-    const cy = h / 2;
-    if (Math.random() < 0.015) {
-      const randAngle = Math.random() * Math.PI * 2;
-      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
-      const finalAngle = toCenterAngle * 0.3 + randAngle * 0.7;
-      e.vx = Math.cos(finalAngle) * e.speed;
-      e.vy = Math.sin(finalAngle) * e.speed;
+    // Constant center pull (strong enough to overcome edge drift)
+    const cx = w / 2, cy = h / 2;
+    const pullDx = cx - e.x, pullDy = cy - e.y;
+    const pullDist = Math.hypot(pullDx, pullDy) || 1;
+    e.vx += (pullDx / pullDist) * 40 * dt;
+    e.vy += (pullDy / pullDist) * 40 * dt;
+    // Velocity damping
+    e.vx *= 0.97;
+    e.vy *= 0.97;
+    // Random nudge for organic movement
+    if (Math.random() < 0.02) {
+      const angle = Math.random() * Math.PI * 2;
+      e.vx += Math.cos(angle) * e.speed * 0.4;
+      e.vy += Math.sin(angle) * e.speed * 0.4;
     }
+    // Gentle repulsion from nearby enemies
     for (const other of state.enemies) {
       if (other.id === e.id) continue;
       const dx = e.x - other.x;
       const dy = e.y - other.y;
       const d = Math.hypot(dx, dy);
-      if (d < 60 && d > 0) {
-        const force = (60 - d) * 0.5;
-        e.vx += (dx / d) * force;
-        e.vy += (dy / d) * force;
+      if (d < 50 && d > 0) {
+        e.vx += (dx / d) * (50 - d) * 0.2 * dt;
+        e.vy += (dy / d) * (50 - d) * 0.2 * dt;
       }
     }
+    // Clamp speed
     const spd = Math.hypot(e.vx, e.vy);
     if (spd > e.speed * 1.5) {
       e.vx = (e.vx / spd) * e.speed * 1.5;
@@ -642,10 +649,18 @@ function updateEnemies(dt) {
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    if (e.x < 10) { e.x = 10; e.vx = Math.abs(e.vx); }
-    if (e.x > w - 10) { e.x = w - 10; e.vx = -Math.abs(e.vx); }
-    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; e.vy = Math.abs(e.vy); }
-    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; e.vy = -Math.abs(e.vy); }
+    // Bounce off edges — redirect toward center
+    let bounced = false;
+    if (e.x < 10) { e.x = 10; bounced = true; }
+    if (e.x > w - 10) { e.x = w - 10; bounced = true; }
+    if (e.y < CANVAS_PAD_TOP + 10) { e.y = CANVAS_PAD_TOP + 10; bounced = true; }
+    if (e.y > h - CANVAS_PAD_BOT - 10) { e.y = h - CANVAS_PAD_BOT - 10; bounced = true; }
+    if (bounced) {
+      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
+      const scatter = (Math.random() - 0.5) * Math.PI * 0.5;
+      e.vx = Math.cos(toCenterAngle + scatter) * e.speed;
+      e.vy = Math.sin(toCenterAngle + scatter) * e.speed;
+    }
     e.el.style.left = e.x + 'px';
     e.el.style.top = e.y + 'px';
     e.labelEl.textContent = `[${e.tag}:${e.hp}]`;
