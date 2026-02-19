@@ -1478,6 +1478,8 @@ mapLvSelect.addEventListener('change', (ev) => {
   ev.stopPropagation();
   state.mapLv = parseInt(mapLvSelect.value);
   clearAllEnemies();
+  const initial = Math.min(getMaxEnemies(), getMaxEnemies());
+  for (let i = 0; i < initial; i++) spawnEnemy();
   updateHUD();
 });
 mapLvSelect.addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
