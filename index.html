@@ -553,14 +553,14 @@ const CANVAS_PAD_TOP = 40;
 const CANVAS_PAD_BOT = 40;
 const SPAWN_INTERVAL = 0.3;
 const ENEMY_TYPES = [
-  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10, behavior: 'normal' },
-  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10, behavior: 'swarm' },
-  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30, behavior: 'guardian' },
-  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50, behavior: 'regen' },
-  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20, behavior: 'evader' },
-  { tag: 'WORM', baseHp: 10, speed: 70, credits: 1, score: 5, behavior: 'swarm' },
-  { tag: 'DAEMON', baseHp: 40, speed: 25, credits: 4, score: 25, behavior: 'teleport' },
-  { tag: 'SENTRY', baseHp: 60, speed: 5, credits: 6, score: 35, behavior: 'stationary' },
+  { tag: 'SRV', baseHp: 20, speed: 30, credits: 2, score: 10, behavior: 'normal', color: '#00ff41' },
+  { tag: 'NODE', baseHp: 15, speed: 45, credits: 2, score: 10, behavior: 'swarm', color: '#66ff66' },
+  { tag: 'FW', baseHp: 50, speed: 20, credits: 5, score: 30, behavior: 'guardian', color: '#4488ff' },
+  { tag: 'DB', baseHp: 80, speed: 15, credits: 8, score: 50, behavior: 'regen', color: '#44ff88' },
+  { tag: 'PROXY', baseHp: 30, speed: 55, credits: 3, score: 20, behavior: 'evader', color: '#ffff44' },
+  { tag: 'WORM', baseHp: 10, speed: 70, credits: 1, score: 5, behavior: 'swarm', color: '#88ff44' },
+  { tag: 'DAEMON', baseHp: 40, speed: 25, credits: 4, score: 25, behavior: 'teleport', color: '#aa44ff' },
+  { tag: 'SENTRY', baseHp: 60, speed: 5, credits: 6, score: 35, behavior: 'stationary', color: '#ff8844' },
 ];
 const ELITE_TYPE = { tag: 'MAINFRAME', baseHp: 300, speed: 10, credits: 30, score: 200, elite: true };
 
@@ -1119,7 +1119,9 @@ function spawnEnemy() {
   enemy.vx = Math.cos(angle) * enemy.speed;
   enemy.vy = Math.sin(angle) * enemy.speed;
 
-  const mutColor = enemy.mutation ? ` style="color:${enemy.mutation.color}"` : '';
+  const baseColor = template.color || '#00ff41';
+  const labelColor = enemy.mutation ? enemy.mutation.color : baseColor;
+  const mutColor = ` style="color:${labelColor}"`;
   const shieldText = enemy.shield > 0 ? `[S:${enemy.shield}]` : '';
   const el = document.createElement('div');
   el.className = 'enemy' + (enemy.elite ? ' elite' : '');
