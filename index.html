@@ -118,6 +118,20 @@ body {
   font-weight: bold;
   white-space: nowrap;
 }
+.enemy .hitbox {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0,255,65,0.25);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.enemy.elite .hitbox {
+  border-color: rgba(255,170,0,0.3);
+}
 .enemy .hp-bar {
   width: 100%;
   height: 3px;
@@ -416,7 +430,7 @@ function spawnEnemy() {
 
   const el = document.createElement('div');
   el.className = 'enemy' + (enemy.elite ? ' elite' : '');
-  el.innerHTML = `<div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
+  el.innerHTML = `<div class="hitbox"></div><div class="label">[${enemy.tag}:${enemy.hp}]</div><div class="hp-bar"><div class="hp-fill"></div></div>`;
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   canvas.appendChild(el);
