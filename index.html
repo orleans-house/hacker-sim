@@ -533,6 +533,11 @@ body {
   </div>
 </div>
 
+<div id="terminal-log" style="position:fixed;bottom:100px;left:10px;width:250px;height:150px;background:rgba(0,0,0,0.85);border:1px solid #00ff41;padding:4px;z-index:90;font-size:9px;overflow:hidden;font-family:'Courier New',monospace;">
+  <div style="color:#ffaa00;text-align:center;margin-bottom:2px;font-size:10px;">-- TERMINAL --</div>
+  <div id="term-lines" style="overflow:hidden;height:130px;"></div>
+</div>
+
 <div id="dps-panel" style="position:fixed;bottom:60px;left:10px;width:150px;background:rgba(0,0,0,0.85);border:1px solid #00ff41;padding:6px;z-index:100;font-size:11px;">
   <div style="color:#ffaa00;text-align:center;margin-bottom:4px;">DPS METER</div>
   <div>DPS: <span id="dps-value" style="color:#ff4444;">0</span></div>
@@ -1018,6 +1023,8 @@ function spawnBoss() {
   state.enemies.push(enemy);
   state.bossActive = true;
   showBanner('BOSS: ' + enemy.tag);
+  termLog('> WARNING: BOSS [' + enemy.tag + '] DETECTED', '#ff4444');
+  termLog('>   HP:' + enemy.maxHp + ' | Cr:' + enemy.credits, '#ff4444');
 }
 
 function spawnEnemy() {
@@ -1365,8 +1372,13 @@ function killEnemy(enemy, fromSub) {
     state.bossActive = false;
     showBanner('BOSS DEFEATED');
     screenShake(12, 500);
+    termLog('> BOSS [' + enemy.tag + '] TERMINATED', '#ff4444');
   } else if (enemy.elite) {
     screenShake(4, 200);
+    termLog('> ELITE [' + enemy.tag + '] destroyed', '#ffaa00');
+  } else if (Math.random() < 0.05) {
+    // Occasional log for normal kills
+    termLog('> [' + enemy.tag + '] neutralized');
   }
 
   // Splitting mutation: spawn 2 smaller enemies
@@ -1866,6 +1878,7 @@ function equipItem(item) {
   }
   slots[emptyIdx] = item;
   playEquipSound();
+  termLog('> EQUIP: [iL' + item.ilv + '] ' + item.name, ARCHETYPES[item.archetype] ? ARCHETYPES[item.archetype].color : '#00ff41');
   const invKey = getInvKeyForType(item.type);
   state.inventories[invKey] = state.inventories[invKey].filter(i => i.id !== item.id);
   if (item.type === 'sub') rebuildDrones();
@@ -2440,6 +2453,7 @@ function forgeItems(option) {
   state.inventories[invKey].push(newItem);
   playEquipSound();
   showBanner('FORGED: ' + newItem.name);
+  termLog('> FORGE: ' + option.nextRarity + ' [iL' + newItem.ilv + '] ' + newItem.name, '#ffaa00');
   renderInventory();
   updateHUD();
 }
@@ -2495,6 +2509,20 @@ function updateDpsPanel() {
   document.getElementById('cps-value').textContent = cps;
 }
 
+// ---- TERMINAL LOG ----
+const TERM_MAX_LINES = 12;
+let termLines = [];
+function termLog(text, color) {
+  color = color || '#00ff41';
+  termLines.push({ text, color });
+  if (termLines.length > TERM_MAX_LINES) termLines.shift();
+  const container = document.getElementById('term-lines');
+  if (!container) return;
+  container.innerHTML = termLines.map(l =>
+    `<div style="color:${l.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l.text}</div>`
+  ).join('');
+}
+
 // ---- AUTO ADVANCE ----
 function checkAutoAdvance() {
   if (!state.autoAdvance) return;
@@ -2504,6 +2532,7 @@ function checkAutoAdvance() {
     state.mapKills = 0;
     document.getElementById('maplv-select').value = state.mapLv;
     showBanner('MAP LV ' + state.mapLv);
+    termLog('> SYSTEM: MapLv -> ' + state.mapLv, '#00ffff');
   }
 }
 
@@ -2753,6 +2782,9 @@ function init() {
   }
   state.running = true;
   lastTime = performance.now();
+  termLog('> HACK.SIM v2.0 initialized');
+  termLog('> MapLv: ' + state.mapLv + ' | Credits: ' + state.credits);
+  termLog('> System ready. Begin scan...');
   const initial = Math.min(getMaxEnemies(), 12);
   for (let i = 0; i < initial; i++) spawnEnemy();
   syncAutoSellUI();
