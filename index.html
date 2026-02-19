@@ -102,7 +102,16 @@ body {
 .equip-slot .slot-label { color: #555; font-size: 10px; margin-right: 4px; white-space: nowrap; }
 .equip-slot .slot-item { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .equip-slot.empty .slot-item { color: #333; font-style: italic; }
-.equip-slot.filled { border-color: #ffaa00; background: rgba(255,170,0,0.05); }
+.equip-slot.common { border-color: #aaa; background: rgba(170,170,170,0.05); }
+.equip-slot.common .slot-item { color: #aaa; }
+.equip-slot.uncommon { border-color: #00ff41; background: rgba(0,255,65,0.05); }
+.equip-slot.uncommon .slot-item { color: #00ff41; }
+.equip-slot.rare { border-color: #4488ff; background: rgba(68,136,255,0.05); }
+.equip-slot.rare .slot-item { color: #4488ff; }
+.equip-slot.epic { border-color: #aa44ff; background: rgba(170,68,255,0.05); }
+.equip-slot.epic .slot-item { color: #aa44ff; }
+.equip-slot.legendary { border-color: #ffaa00; background: rgba(255,170,0,0.08); }
+.equip-slot.legendary .slot-item { color: #ffaa00; text-shadow: 0 0 4px #ffaa00; }
 
 .inv-separator {
   border: none;
@@ -585,10 +594,11 @@ function spawnEnemy() {
   const h = window.innerHeight;
   const side = randInt(0, 3);
   let x, y;
-  if (side === 0) { x = rand(0, w); y = CANVAS_PAD_TOP; }
-  else if (side === 1) { x = rand(0, w); y = h - CANVAS_PAD_BOT; }
-  else if (side === 2) { x = 0; y = rand(CANVAS_PAD_TOP, h - CANVAS_PAD_BOT); }
-  else { x = w; y = rand(CANVAS_PAD_TOP, h - CANVAS_PAD_BOT); }
+  const margin = 60;
+  if (side === 0) { x = rand(margin, w - margin); y = CANVAS_PAD_TOP + margin; }
+  else if (side === 1) { x = rand(margin, w - margin); y = h - CANVAS_PAD_BOT - margin; }
+  else if (side === 2) { x = margin; y = rand(CANVAS_PAD_TOP + margin, h - CANVAS_PAD_BOT - margin); }
+  else { x = w - margin; y = rand(CANVAS_PAD_TOP + margin, h - CANVAS_PAD_BOT - margin); }
 
   const enemy = {
     id: Date.now() + Math.random(),
@@ -628,10 +638,32 @@ function updateEnemies(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   for (const e of state.enemies) {
-    if (Math.random() < 0.01) {
-      const angle = Math.random() * Math.PI * 2;
-      e.vx = Math.cos(angle) * e.speed;
-      e.vy = Math.sin(angle) * e.speed;
+    // Gentle drift toward center + random wandering
+    const cx = w / 2;
+    const cy = h / 2;
+    if (Math.random() < 0.015) {
+      const randAngle = Math.random() * Math.PI * 2;
+      const toCenterAngle = Math.atan2(cy - e.y, cx - e.x);
+      const finalAngle = toCenterAngle * 0.3 + randAngle * 0.7;
+      e.vx = Math.cos(finalAngle) * e.speed;
+      e.vy = Math.sin(finalAngle) * e.speed;
+    }
+    // Repel from nearby enemies
+    for (const other of state.enemies) {
+      if (other.id === e.id) continue;
+      const dx = e.x - other.x;
+      const dy = e.y - other.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 60 && d > 0) {
+        const force = (60 - d) * 0.5;
+        e.vx += (dx / d) * force;
+        e.vy += (dy / d) * force;
+      }
+    }
+    const spd = Math.hypot(e.vx, e.vy);
+    if (spd > e.speed * 1.5) {
+      e.vx = (e.vx / spd) * e.speed * 1.5;
+      e.vy = (e.vy / spd) * e.speed * 1.5;
     }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
