@@ -11,7 +11,7 @@ body {
   color: #00ff41;
   font-family: 'Courier New', monospace;
   overflow: hidden;
-  cursor: crosshair;
+  cursor: none;
   user-select: none;
 }
 #game-canvas {
@@ -247,6 +247,26 @@ body {
 }
 #result-overlay button:hover { background: rgba(0,255,65,0.2); }
 
+/* Crosshair + splash range indicator */
+#crosshair {
+  position: fixed;
+  border: 1px solid rgba(0,255,65,0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 90;
+  transform: translate(-50%, -50%);
+}
+#crosshair::after {
+  content: '+';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #00ff41;
+  font-size: 16px;
+  font-weight: bold;
+}
+
 /* Wave banner */
 #wave-banner {
   position: fixed;
@@ -285,6 +305,7 @@ body {
 </div>
 
 <div id="game-canvas"></div>
+<div id="crosshair"></div>
 
 <div id="wave-banner"></div>
 
@@ -335,7 +356,7 @@ let state = {
   trace: 0,
   enemies: [],
   drops: [],
-  weapon: { id: 0, name: 'Ping Flood', rarity: 'common', atk: 10, splash: 30, cd: 0.5 },
+  weapon: { id: 0, name: 'Ping Flood', rarity: 'common', atk: 10, splash: 50, cd: 0.5 },
   cooldown: 0,
   mouseX: 0,
   mouseY: 0,
@@ -446,10 +467,12 @@ function attack(mx, my) {
   // Show click effect
   showAttackEffect(mx, my);
 
-  // Hit ALL enemies within splash radius of click point
+  // Hit ALL enemies within splash radius of click point (use center of enemy label)
   const toKill = [];
   for (const e of state.enemies) {
-    const d = dist(mx, my, e.x, e.y);
+    const ex = e.x + 35; // approx half-width of label
+    const ey = e.y + 10; // approx half-height
+    const d = dist(mx, my, ex, ey);
     if (d <= splash) {
       const isCrit = Math.random() < state.upgrades.critChance;
       const dmg = isCrit ? Math.floor(atkPower * state.upgrades.critMult) : atkPower;
@@ -506,7 +529,7 @@ function makeWeapon(rarity, wave) {
     name: baseName,
     rarity,
     atk: 8 + rarityIdx * 6 + randInt(0, 4 + wave),
-    splash: 25 + rarityIdx * 10 + randInt(0, 8),
+    splash: 45 + rarityIdx * 15 + randInt(0, 10),
     cd: Math.round(Math.max(0.15, 0.6 - rarityIdx * 0.08 + rand(-0.05, 0.05)) * 100) / 100,
   };
 }
@@ -676,6 +699,7 @@ function updateHUD() {
   document.getElementById('hud-atk').textContent = Math.floor(w.atk * state.upgrades.atkMult);
   document.getElementById('hud-splash').textContent = Math.floor((w.splash || 30) * state.upgrades.splashMult);
   document.getElementById('hud-cd').textContent = (w.cd * state.upgrades.cdMult).toFixed(2);
+  updateCrosshair();
 }
 
 // ---- GAME OVER / WIN ----
@@ -744,10 +768,19 @@ function gameLoop(timestamp) {
 
 // ---- INPUT ----
 let mouseDown = false;
+const crosshairEl = document.getElementById('crosshair');
 document.addEventListener('mousemove', (e) => {
   state.mouseX = e.clientX;
   state.mouseY = e.clientY;
+  crosshairEl.style.left = e.clientX + 'px';
+  crosshairEl.style.top = e.clientY + 'px';
 });
+function updateCrosshair() {
+  const splash = (state.weapon.splash || 30) * state.upgrades.splashMult;
+  const size = splash * 2;
+  crosshairEl.style.width = size + 'px';
+  crosshairEl.style.height = size + 'px';
+}
 document.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   mouseDown = true;
