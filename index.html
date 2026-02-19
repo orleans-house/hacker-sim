@@ -511,6 +511,16 @@ body {
       <option value="unique">unique</option>
     </select>
   </div>
+  <div class="upgrade-row">
+    <button id="bulk-sell-btn" style="width:100%;background:none;border:1px solid #ff4444;color:#ff4444;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;padding:3px;" onclick="event.stopPropagation();bulkSell();">SELL FILTERED</button>
+  </div>
+</div>
+
+<div id="dps-panel" style="position:fixed;bottom:60px;left:10px;width:150px;background:rgba(0,0,0,0.85);border:1px solid #00ff41;padding:6px;z-index:100;font-size:11px;">
+  <div style="color:#ffaa00;text-align:center;margin-bottom:4px;">DPS METER</div>
+  <div>DPS: <span id="dps-value" style="color:#ff4444;">0</span></div>
+  <div>Kills/s: <span id="kps-value" style="color:#00ffff;">0</span></div>
+  <div>Cr/s: <span id="cps-value" style="color:#ffaa00;">0</span></div>
 </div>
 
 <div class="item-tooltip" id="item-tooltip"></div>
@@ -662,6 +672,11 @@ let state = {
   drones: [],
   bossActive: false,
   bossSpawned: {}, // mapLv -> true
+  // DPS tracking
+  dpsLog: [], // [{time, dmg}]
+  killLog: [], // [{time}]
+  creditLog: [], // [{time, amount}]
+  milestoneNext: 1000,
 };
 
 const canvas = document.getElementById('game-canvas');
@@ -1339,7 +1354,11 @@ function killEnemy(enemy, fromSub) {
   const creditMult = state.upgrades.creditMult * (1 + computed.xpBonus);
   state.score += Math.floor(enemy.score * mult);
   state.kills++;
-  state.credits += Math.floor(enemy.credits * mult * creditMult);
+  const earnedCredits = Math.floor(enemy.credits * mult * creditMult);
+  state.credits += earnedCredits;
+  logKill();
+  logCredits(earnedCredits);
+  checkMilestone();
 
   const baseDropChance = 0.15;
   const dropChance = baseDropChance * state.upgrades.dropMult * (1 + computed.dropBonus);
@@ -1416,6 +1435,7 @@ function showDamageNumber(x, y, dmg, crit, isSub, shape, subMode) {
   setTimeout(() => el.remove(), 800);
   if (!isSub) playHitSound(crit, shape);
   else if (subMode) playSubSound(subMode);
+  logDamage(dmg);
 }
 
 function showSubEffect(x, y, symbol) {
@@ -2163,8 +2183,67 @@ function updateDrones(dt) {
   }
 }
 
+// ---- BULK SELL ----
+function bulkSell() {
+  let totalSold = 0;
+  for (const key of ['cores', 'subs', 'modules']) {
+    const kept = [];
+    for (const item of state.inventories[key]) {
+      if (shouldAutoSell(item)) {
+        autoSellItem(item);
+        totalSold++;
+      } else {
+        kept.push(item);
+      }
+    }
+    state.inventories[key] = kept;
+  }
+  if (totalSold > 0) showBanner('SOLD ' + totalSold + ' ITEMS');
+  renderInventory();
+  updateHUD();
+}
+
+// ---- DPS TRACKING ----
+function logDamage(dmg) {
+  state.dpsLog.push({ time: performance.now(), dmg });
+}
+function logKill() {
+  state.killLog.push({ time: performance.now() });
+}
+function logCredits(amount) {
+  state.creditLog.push({ time: performance.now(), amount });
+}
+
+function updateDpsPanel() {
+  const now = performance.now();
+  const window5s = 5000;
+  state.dpsLog = state.dpsLog.filter(e => now - e.time < window5s);
+  state.killLog = state.killLog.filter(e => now - e.time < window5s);
+  state.creditLog = state.creditLog.filter(e => now - e.time < window5s);
+
+  const totalDmg = state.dpsLog.reduce((s, e) => s + e.dmg, 0);
+  const dps = Math.floor(totalDmg / (window5s / 1000));
+  const kps = (state.killLog.length / (window5s / 1000)).toFixed(1);
+  const totalCr = state.creditLog.reduce((s, e) => s + e.amount, 0);
+  const cps = Math.floor(totalCr / (window5s / 1000));
+
+  document.getElementById('dps-value').textContent = dps;
+  document.getElementById('kps-value').textContent = kps;
+  document.getElementById('cps-value').textContent = cps;
+}
+
+// ---- MILESTONES ----
+function checkMilestone() {
+  if (state.score >= state.milestoneNext) {
+    showBanner('MILESTONE: ' + state.milestoneNext + ' SCORE');
+    // Next milestone doubles
+    state.milestoneNext = state.milestoneNext * 2;
+  }
+}
+
 // ---- MAIN LOOP ----
 let lastTime = 0;
+let dpsUpdateTimer = 0;
 function gameLoop(timestamp) {
   if (!state.running) return;
   const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
@@ -2193,6 +2272,8 @@ function gameLoop(timestamp) {
     updateDrones(dt);
   }
 
+  dpsUpdateTimer += dt;
+  if (dpsUpdateTimer > 0.5) { dpsUpdateTimer = 0; updateDpsPanel(); }
   updateHUD();
   requestAnimationFrame(gameLoop);
 }
