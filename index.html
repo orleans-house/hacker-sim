@@ -1082,7 +1082,7 @@ function applyDamage(enemy, dmg) {
     dmg -= enemy.shield;
     enemy.shield = 0;
   }
-  enemy.hp -= dmg;
+  applyDamage(enemy, dmg);
 }
 
 function removeEnemy(enemy) {
@@ -1245,7 +1245,7 @@ function attack(mx, my) {
             if (!state.enemies.includes(e)) return;
             const isCrit = Math.random() < stats.critChance;
             const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * allMult * mults[p]);
-            e.hp -= dmg;
+            applyDamage(e, dmg);
             showDamageNumber(e.x, e.y, dmg, isCrit, false, 'pierce-burst');
             if (e.hp <= 0) killEnemy(e, false);
           }, p * 50);
@@ -1262,7 +1262,7 @@ function attack(mx, my) {
         const isCrit = Math.random() < stats.critChance;
         const allMult = state.upgrades.allDmgMult || 1;
         const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * allMult);
-        e.hp -= dmg;
+        applyDamage(e, dmg);
         showDamageNumber(e.x, e.y, dmg, isCrit, false, core.attackShape);
         if (e.hp <= 0) toKill.add(e);
       }
@@ -1289,7 +1289,7 @@ function attack(mx, my) {
         e.labelEl.style.color = '';
         const isCrit = Math.random() < stats.critChance;
         const dmg = Math.floor((isCrit ? stats.atk * stats.critDmg : stats.atk) * 1.5 * allMult);
-        e.hp -= dmg;
+        applyDamage(e, dmg);
         showDamageNumber(e.x, e.y, dmg, isCrit, false, 'lock-on');
         showAttackEffect(e.x, e.y, 'circle', 40, 0, e.x, e.y);
         if (e.hp <= 0) killEnemy(e, false);
@@ -1492,7 +1492,7 @@ function updateSubAttacks(dt) {
         const ec = getEnemyCenter(e);
         if (dist(ec.x, ec.y, ox, oy) < 40) {
           const dmg = Math.max(1, Math.floor(dps * dt));
-          e.hp -= dmg;
+          applyDamage(e, dmg);
           if (Math.random() < 0.1) showDamageNumber(e.x, e.y, dmg, false, true, null, 'orbit');
           if (e.hp <= 0) {
             killEnemy(e, true);
@@ -1523,7 +1523,7 @@ function updateSubAttacks(dt) {
         const isCrit = Math.random() < stats.critChance;
         const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-        nearest.hp -= dmg;
+        applyDamage(nearest, dmg);
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
         showSubEffect(ec.x, ec.y, '>');
         if (nearest.hp <= 0) killEnemy(nearest, true);
@@ -1538,7 +1538,7 @@ function updateSubAttacks(dt) {
           hit.add(target.id);
           const isCrit = Math.random() < stats.critChance;
           const dmg = isCrit ? Math.floor(chainDmg * stats.critDmg) : Math.floor(chainDmg);
-          target.hp -= dmg;
+          applyDamage(target, dmg);
           showDamageNumber(target.x, target.y, dmg, isCrit, true, null, 'chain');
           showSubEffect(ec.x, ec.y, '>');
 
@@ -1567,7 +1567,7 @@ function updateSubAttacks(dt) {
         const isCrit = Math.random() < stats.critChance;
         const subBase = sub.atk * subMult;
         const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-        nearest.hp -= dmg;
+        applyDamage(nearest, dmg);
         showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, sub.autoMode);
         showSubEffect(ec.x, ec.y, '#');
         if (nearest.hp <= 0) killEnemy(nearest, false); // false to allow explode
@@ -2102,7 +2102,7 @@ function updateInfections(dt) {
     const enemy = state.enemies.find(e => e.id === inf.enemyId);
     if (!enemy) { state.infections.splice(i, 1); continue; }
     const dmg = Math.max(1, Math.floor(inf.dmgPerSec * dt));
-    enemy.hp -= dmg;
+    applyDamage(enemy, dmg);
     if (Math.random() < dt * 2) showDamageNumber(enemy.x, enemy.y, dmg, false, true, null, 'parasite');
     if (enemy.hp <= 0) {
       // Propagate before kill
@@ -2172,7 +2172,7 @@ function updateDrones(dt) {
       const subBase = sub.atk * getSubDmgMult();
       const isCrit = Math.random() < stats.critChance;
       const dmg = Math.floor(isCrit ? subBase * stats.critDmg : subBase);
-      nearest.hp -= dmg;
+      applyDamage(nearest, dmg);
       showDamageNumber(nearest.x, nearest.y, dmg, isCrit, true, null, 'drone');
       const ec = getEnemyCenter(nearest);
       showSubEffect(ec.x, ec.y, '·');
